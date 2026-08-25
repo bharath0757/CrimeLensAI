@@ -1,0 +1,134 @@
+# ============================================================
+# CrimeLensAI — OpenAPI Specification: Graph Service
+# ============================================================
+openapi: "3.1.0"
+info:
+  title: CrimeLensAI Graph Service
+  version: "0.1.0"
+  description: Neo4j-backed cross-case linkage and network analysis.
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Service is healthy
+
+  /api/v1/entities:
+    post:
+      summary: Create or update entity node
+      operationId: upsertEntity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExtractedEntity"
+      responses:
+        "200":
+          description: Entity upserted
+
+  /api/v1/relationships:
+    post:
+      summary: Create relationship between entities
+      operationId: createRelationship
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GraphRelationship"
+      responses:
+        "200":
+          description: Relationship created
+
+  /api/v1/linkage/{case_id}:
+    get:
+      summary: Get cross-case linkage for a case
+      operationId: getCrossCaseLinkage
+      parameters:
+        - name: case_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Linked cases
+
+  /api/v1/centrality/{entity_id}:
+    get:
+      summary: Get entity centrality metrics
+      operationId: getEntityCentrality
+      parameters:
+        - name: entity_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Centrality metrics
+
+  /api/v1/communities:
+    get:
+      summary: Detect communities in entity graph
+      operationId: detectCommunities
+      responses:
+        "200":
+          description: Community clusters
+
+  /api/v1/shortest-path:
+    get:
+      summary: Find shortest path between entities
+      operationId: shortestPath
+      parameters:
+        - name: entity_a
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: entity_b
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Shortest path
+
+components:
+  schemas:
+    ExtractedEntity:
+      type: object
+      properties:
+        id:
+          type: string
+        entity_type:
+          type: string
+          enum: [PERSON, PHONE, VEHICLE, UPI_ID, LOCATION, ORG]
+        value:
+          type: string
+        confidence:
+          type: number
+        case_id:
+          type: string
+
+    GraphRelationship:
+      type: object
+      required: [source_entity_id, target_entity_id, relationship_type, source_case_id, confidence, why_linked]
+      properties:
+        source_entity_id:
+          type: string
+        target_entity_id:
+          type: string
+        relationship_type:
+          type: string
+        source_case_id:
+          type: string
+        confidence:
+          type: number
+        why_linked:
+          type: string

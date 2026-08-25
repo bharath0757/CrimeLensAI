@@ -1,0 +1,132 @@
+# ============================================================
+# CrimeLensAI — Docker Compose (Local Development)
+# ============================================================
+# Start everything: docker compose up --build
+# This brings up all 5 services + PostgreSQL + Neo4j
+# ============================================================
+
+services:
+  # ---- Databases ----
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: crimelens-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-crimelens}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-crimelens_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-crimelens}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crimelens"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: crimelens-neo4j
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-neo4j_dev_password}
+      NEO4J_PLUGINS: '["graph-data-science"]'
+    ports:
+      - "7474:7474"   # Browser UI
+      - "7687:7687"   # Bolt protocol
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD", "neo4j", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # ---- Backend Services ----
+
+  extraction:
+    build:
+      context: ./services/extraction
+      dockerfile: Dockerfile
+    container_name: crimelens-extraction
+    ports:
+      - "8001:8001"
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  graph:
+    build:
+      context: ./services/graph
+      dockerfile: Dockerfile
+    container_name: crimelens-graph
+    ports:
+      - "8002:8002"
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  ledger:
+    build:
+      context: ./services/ledger
+      dockerfile: Dockerfile
+    container_name: crimelens-ledger
+    ports:
+      - "8003:8003"
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    container_name: crimelens-api
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      extraction:
+        condition: service_started
+      graph:
+        condition: service_started
+      ledger:
+        condition: service_started
+
+  # ---- Frontend ----
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: crimelens-web
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  neo4j_data:

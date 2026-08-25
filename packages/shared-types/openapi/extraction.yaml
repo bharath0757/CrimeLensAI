@@ -1,0 +1,134 @@
+# ============================================================
+# CrimeLensAI — OpenAPI Specification: Extraction Service
+# ============================================================
+# Contract-first API definition. All services and the frontend
+# build against these specs. Changes require team-wide review.
+# ============================================================
+openapi: "3.1.0"
+info:
+  title: CrimeLensAI Extraction Service
+  version: "0.1.0"
+  description: |
+    NLP entity extraction microservice. Extracts PERSON, PHONE, VEHICLE,
+    UPI_ID, LOCATION, ORG entities from FIR text with confidence scores.
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  service:
+                    type: string
+                  version:
+                    type: string
+
+  /api/v1/extract:
+    post:
+      summary: Extract entities from raw text
+      operationId: extractEntities
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  description: Raw text to extract entities from
+                source_type:
+                  type: string
+                  enum: [fir_text, call_record, financial_log, location_data]
+      responses:
+        "200":
+          description: Extracted entities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entities:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ExtractedEntity"
+
+  /api/v1/resolve:
+    post:
+      summary: Resolve entity variants
+      operationId: resolveEntities
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entities:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/ExtractedEntity"
+      responses:
+        "200":
+          description: Resolved entity groups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  resolved_groups:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EntityResolutionGroup"
+
+components:
+  schemas:
+    ExtractedEntity:
+      type: object
+      required: [entity_type, value, confidence, start_offset, end_offset, source_field]
+      properties:
+        id:
+          type: string
+        entity_type:
+          type: string
+          enum: [PERSON, PHONE, VEHICLE, UPI_ID, LOCATION, ORG]
+        value:
+          type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        start_offset:
+          type: integer
+        end_offset:
+          type: integer
+        source_field:
+          type: string
+        case_id:
+          type: string
+        confirmed:
+          type: boolean
+          nullable: true
+
+    EntityResolutionGroup:
+      type: object
+      properties:
+        canonical_value:
+          type: string
+        entity_type:
+          type: string
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExtractedEntity"
+        merge_confidence:
+          type: number

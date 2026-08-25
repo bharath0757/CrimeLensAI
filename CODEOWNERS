@@ -1,0 +1,28 @@
+# ============================================================
+# CrimeLensAI — CODEOWNERS
+# ============================================================
+# Each top-level module is owned by one teammate.
+# GitHub/GitLab will auto-request the correct reviewer on PRs.
+#
+# Replace @teammate-N with actual GitHub usernames once assigned.
+# ============================================================
+
+# ---- Service Modules ----
+/services/extraction/       @bharath0757
+/services/graph/            @jithendar-guttula
+/services/ledger/           @reshmasri009
+/services/api/              @reshmasri009
+
+# ---- Frontend ----
+/apps/web/                  @avskrishna2-coder
+
+# ---- Shared Contracts (everyone reviews changes here) ----
+/packages/shared-types/     @bharath0757 @jithendar-guttula @reshmasri009 @avskrishna2-coder @sreenadhavb
+
+# ---- Infrastructure (requires at least 2 reviewers from the team) ----
+/infra/                     @bharath0757 @jithendar-guttula @reshmasri009 @avskrishna2-coder @sreenadhavb
+
+# ---- Root config files ----
+docker-compose.yml          @bharath0757 @jithendar-guttula @reshmasri009 @avskrishna2-coder @sreenadhavb
+.env.example                @bharath0757 @jithendar-guttula @reshmasri009 @avskrishna2-coder @sreenadhavb
+README.md                   @bharath0757 @jithendar-guttula @reshmasri009 @avskrishna2-coder @sreenadhavb

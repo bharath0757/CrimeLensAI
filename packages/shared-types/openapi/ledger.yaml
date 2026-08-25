@@ -1,0 +1,156 @@
+# ============================================================
+# CrimeLensAI — OpenAPI Specification: Ledger Service
+# ============================================================
+openapi: "3.1.0"
+info:
+  title: CrimeLensAI Ledger Service
+  version: "0.1.0"
+  description: Hash-chain tamper-evidence ledger, JWT auth, RBAC, and privacy masking.
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Service is healthy
+
+  /api/v1/ledger/record:
+    post:
+      summary: Append record to hash-chain
+      operationId: appendRecord
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Record appended
+
+  /api/v1/ledger/verify/{record_id}:
+    get:
+      summary: Verify record integrity
+      operationId: verifyRecord
+      parameters:
+        - name: record_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Verification result
+
+  /api/v1/ledger/chain:
+    get:
+      summary: Get paginated ledger chain
+      operationId: getChain
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Ledger records
+
+  /api/v1/auth/login:
+    post:
+      summary: Authenticate user
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: JWT token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+
+  /api/v1/auth/me:
+    get:
+      summary: Get current user profile
+      operationId: getCurrentUser
+      responses:
+        "200":
+          description: User profile
+
+  /api/v1/auth/register:
+    post:
+      summary: Register new user (Admin only)
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: User registered
+
+  /api/v1/privacy/mask:
+    post:
+      summary: Apply field-level privacy masking
+      operationId: maskFields
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Masked data
+
+components:
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        token_type:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserProfile"
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        full_name:
+          type: string
+        role:
+          type: string
+          enum: [INVESTIGATOR, SUPERVISOR, ADMIN]
+        district:
+          type: string
+        station:
+          type: string
