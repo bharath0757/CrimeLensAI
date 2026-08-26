@@ -1,7 +1,5 @@
-# ============================================================
-# CrimeLensAI — .gitignore
-# Covers Python, Node.js, Docker, and IDE artifacts
-# for all 5 modules in the monorepo.
+﻿# ============================================================
+# CrimeLensAI - .gitignore
 # ============================================================
 
 # ---- Environment & Secrets ----
@@ -14,7 +12,7 @@
 # ---- Python ----
 __pycache__/
 *.py[cod]
-*$py.class
+*.class
 *.so
 .venv/
 venv/
@@ -34,8 +32,8 @@ htmlcov/
 
 # ---- Node.js / Frontend ----
 node_modules/
-apps/web/dist/
-apps/web/.vite/
+frontend/dist/
+frontend/.vite/
 *.tsbuildinfo
 .turbo/
 

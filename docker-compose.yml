@@ -1,13 +1,8 @@
-# ============================================================
-# CrimeLensAI — Docker Compose (Local Development)
-# ============================================================
-# Start everything: docker compose up --build
-# This brings up all 5 services + PostgreSQL + Neo4j
+﻿# ============================================================
+# CrimeLensAI - Docker Compose (Local Development)
 # ============================================================
 
 services:
-  # ---- Databases ----
-
   postgres:
     image: postgres:16-alpine
     container_name: crimelens-postgres
@@ -32,8 +27,8 @@ services:
       NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-neo4j_dev_password}
       NEO4J_PLUGINS: '["graph-data-science"]'
     ports:
-      - "7474:7474"   # Browser UI
-      - "7687:7687"   # Bolt protocol
+      - "7474:7474"
+      - "7687:7687"
     volumes:
       - neo4j_data:/data
     healthcheck:
@@ -42,11 +37,9 @@ services:
       timeout: 10s
       retries: 5
 
-  # ---- Backend Services ----
-
   extraction:
     build:
-      context: ./services/extraction
+      context: ./services/entity-extraction-service
       dockerfile: Dockerfile
     container_name: crimelens-extraction
     ports:
@@ -61,7 +54,7 @@ services:
 
   graph:
     build:
-      context: ./services/graph
+      context: ./services/graph-service
       dockerfile: Dockerfile
     container_name: crimelens-graph
     ports:
@@ -78,7 +71,7 @@ services:
 
   ledger:
     build:
-      context: ./services/ledger
+      context: ./services/audit-ledger-service
       dockerfile: Dockerfile
     container_name: crimelens-ledger
     ports:
@@ -91,9 +84,24 @@ services:
       postgres:
         condition: service_healthy
 
+  ingestion:
+    build:
+      context: ./services/ingestion-service
+      dockerfile: Dockerfile
+    container_name: crimelens-ingestion
+    ports:
+      - "8004:8004"
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
-      context: ./services/api
+      context: ./services/case-api
       dockerfile: Dockerfile
     container_name: crimelens-api
     ports:
@@ -111,12 +119,12 @@ services:
         condition: service_started
       ledger:
         condition: service_started
-
-  # ---- Frontend ----
+      ingestion:
+        condition: service_started
 
   web:
     build:
-      context: ./apps/web
+      context: ./frontend
       dockerfile: Dockerfile
     container_name: crimelens-web
     ports:
