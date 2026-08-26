@@ -1,0 +1,6 @@
+transaction_id,case_id,payer_vpa,payee_vpa,amount_inr,timestamp,note
+TXN-001,FIR-BBK-002,meera19@oksbi,safehouse@ybl,2400,2026-07-07T20:15:00+05:30,travel fee
+TXN-002,FIR-STP-003,kavya.y@okaxis,safehouse@ybl,2600,2026-07-12T21:02:00+05:30,placement registration
+TXN-003,FIR-AYD-004,pooja20@paytm,safehouse@ybl,2500,2026-07-17T18:48:00+05:30,document processing
+TXN-004,FIR-UNN-005,riya.g@ibl,recruiter.ops@ybl,1200,2026-07-23T16:30:00+05:30,bus and document fee
+TXN-005,FIR-UNN-005,recruiter.ops@ybl,safehouse@ybl,1100,2026-07-23T16:42:00+05:30,settlement

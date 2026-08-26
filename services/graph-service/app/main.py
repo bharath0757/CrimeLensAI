@@ -44,10 +44,11 @@ app.include_router(api_router)
 @app.get("/health", tags=["Health"])
 async def health_check():
     """Health check endpoint. Also verifies Neo4j connectivity."""
-    # TODO: Add actual Neo4j ping check
+    from app.api.routes import store
+
     return {
         "status": "healthy",
         "service": "graph",
         "version": "0.1.0",
-        "neo4j": "not_checked",
+        "backend": store.__class__.__name__,
     }
