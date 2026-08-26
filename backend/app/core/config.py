@@ -1,3 +1,4 @@
+import os
 from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -8,6 +9,12 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     DEBUG: bool = True
 
+    # Security & Auth Configuration
+    SECRET_KEY: str = "CRIMELENS_AI_SECRET_KEY_SUPER_SECURE_STUDENT_SIH_TOKEN_2026"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+
+    # CORS
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
@@ -15,7 +22,14 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
     ]
 
+    # File Upload Settings
+    UPLOAD_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "uploads")
+    MAX_FILE_SIZE_BYTES: int = 50 * 1024 * 1024  # 50 MB
+    ALLOWED_EXTENSIONS: List[str] = ["pdf", "txt", "docx", "png", "jpg", "jpeg", "csv", "json", "log"]
+
+    # External Integration Endpoints
     AI_SERVICE_URL: str = "http://localhost:8001"
+    GRAPH_SERVICE_URL: str = "http://localhost:7474"
 
     model_config = SettingsConfigDict(
         env_file=".env",
