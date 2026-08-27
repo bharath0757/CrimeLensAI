@@ -82,7 +82,7 @@ async function request<T>(
 
 export const api = {
   // Health
-  health: () => request<{ status: string }>("/health"),
+  health: () => request<{ status: string }>("/api/v1/health"),
 
   // Cases
   cases: {
@@ -121,12 +121,24 @@ export const api = {
       request(`/api/v1/entities/${id}/reject`, { method: "POST" }),
   },
 
-  // Auth (proxied to ledger service)
+  // Graph & Network Analysis
+  graph: {
+    get: (caseId: string) => request(`/api/v1/cases/${caseId}/graph`),
+    stats: (caseId: string) => request(`/api/v1/cases/${caseId}/graph/stats`),
+  },
+
+  // Documents
+  documents: {
+    list: (caseId: string) => request(`/api/v1/cases/${caseId}/documents`),
+    get: (documentId: string) => request(`/api/v1/documents/${documentId}`),
+  },
+
+  // Auth
   auth: {
     login: (username: string, password: string) =>
       request("/api/v1/auth/login", {
         method: "POST",
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ email: username, username, password }),
       }),
     me: () => request("/api/v1/auth/me"),
     setToken: async (token: string) => {

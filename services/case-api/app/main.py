@@ -37,3 +37,13 @@ async def root():
         "message": "Welcome to CrimeLens AI Backend API. Visit /docs for API documentation.",
         "health": f"{settings.API_V1_STR}/health",
     }
+
+
+@app.get("/health", summary="Health Check")
+async def health_check_alias():
+    return {
+        "status": "healthy",
+        "message": "CrimeLens AI backend is operating normally.",
+        "app": settings.PROJECT_NAME,
+        "version": settings.VERSION,
+    }
