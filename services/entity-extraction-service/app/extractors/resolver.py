@@ -4,15 +4,23 @@ CrimeLensAI — Entity Resolution
 Groups extracted entities that likely refer to the same real-world
 identity.
 
-Strategy:
+Type partitions:
   * **Exact-match types** (PHONE, VEHICLE, UPI_ID): entities are
     grouped when their ``normalized_value`` matches exactly.
     Resolution method: ``"exact_match"``, confidence: 1.0.
 
-  * **Fuzzy types** (PERSON, ORG, LOCATION, DATE): entities are
+  * **Fuzzy identity types** (PERSON, ORG, LOCATION): entities are
     grouped using ``rapidfuzz.fuzz.token_sort_ratio`` when the
     score exceeds ``RESOLUTION_FUZZY_THRESHOLD`` (default 80).
     Resolution method: ``"fuzzy_match"``, confidence = score / 100.
+
+  * **Non-resolvable / context types** (DATE): passed through
+    without identity resolution.  Dates are contextual metadata,
+    not real-world identities.
+
+Canonical entity IDs are **deterministic** — derived from a
+SHA-256 hash of ``entity_type:normalized_value`` so that the same
+identity always produces the same ID across requests.
 
 The resolver is **conservative** — it does NOT merge entities
 across different ``entity_type``s and uses a high threshold to
@@ -21,16 +29,32 @@ avoid false merges.
 
 from __future__ import annotations
 
-import uuid
+import hashlib
 from collections import defaultdict
 
 from rapidfuzz import fuzz
 
 from app.core.config import settings
+from app.extractors.normalizers import normalize
 from app.models.schemas import ExtractedEntityResponse, ResolvedGroup
 
 # Types where normalized_value equality is sufficient for grouping
 _EXACT_TYPES = {"PHONE", "VEHICLE", "UPI_ID"}
+
+# Types excluded from identity resolution (contextual, not identities)
+_SKIP_TYPES = {"DATE"}
+
+
+def _make_canonical_id(entity_type: str, normalized_value: str) -> str:
+    """Generate a deterministic canonical entity ID.
+
+    Uses SHA-256 of ``entity_type:normalized_value`` so that the
+    same identity always produces the same ID, and different entity
+    types never collide.
+    """
+    key = f"{entity_type}:{normalized_value}"
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
+    return digest
 
 
 def _pick_canonical(mentions: list[ExtractedEntityResponse]) -> str:
@@ -54,7 +78,9 @@ def _resolve_exact(
     for _norm_val, mentions in buckets.items():
         groups.append(
             ResolvedGroup(
-                canonical_entity_id=str(uuid.uuid4()),
+                canonical_entity_id=_make_canonical_id(
+                    mentions[0].entity_type, _norm_val,
+                ),
                 canonical_value=_pick_canonical(mentions),
                 entity_type=mentions[0].entity_type,
                 variants=mentions,
@@ -123,10 +149,17 @@ def _resolve_fuzzy(
                     )
             conf = sum(scores) / len(scores) if scores else 1.0
 
+        canonical = _pick_canonical(mentions)
+        # Use the normalized value of the canonical representative
+        # to ensure deterministic IDs
+        canonical_norm = normalize(mentions[0].entity_type, canonical)
+
         groups.append(
             ResolvedGroup(
-                canonical_entity_id=str(uuid.uuid4()),
-                canonical_value=_pick_canonical(mentions),
+                canonical_entity_id=_make_canonical_id(
+                    mentions[0].entity_type, canonical_norm,
+                ),
+                canonical_value=canonical,
                 entity_type=mentions[0].entity_type,
                 variants=mentions,
                 merge_confidence=round(conf, 4),
@@ -160,6 +193,9 @@ def resolve_entities(
     threshold = settings.RESOLUTION_FUZZY_THRESHOLD
 
     for etype, ents in by_type.items():
+        if etype in _SKIP_TYPES:
+            # DATE and other context types are not identities — skip
+            continue
         if etype in _EXACT_TYPES:
             all_groups.extend(_resolve_exact(ents))
         else:

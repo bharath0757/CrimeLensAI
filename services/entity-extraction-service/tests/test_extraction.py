@@ -483,3 +483,170 @@ class TestSourceField:
         entities = resp.json()["entities"]
         for ent in entities:
             assert ent["source_field"] == "call_record"
+
+
+# ------------------------------------------------------------------
+# 17. DATE Excluded from Identity Resolution
+# ------------------------------------------------------------------
+
+class TestDateNotResolved:
+    """DATE entities must NOT be grouped as identities by the resolver."""
+
+    def _make_entity(self, value: str, entity_type: str = "DATE",
+                     normalized: str | None = None) -> dict:
+        return {
+            "entity_id": f"test-{value}",
+            "entity_type": entity_type,
+            "value": value,
+            "normalized_value": normalized or value.lower().strip(),
+            "confidence": 0.7,
+            "start_offset": 0,
+            "end_offset": len(value),
+            "source_field": "fir_text",
+        }
+
+    def test_dates_not_grouped(self, client: TestClient):
+        """Different dates must not be merged as the same identity."""
+        entities = [
+            self._make_entity("15 January 2024", normalized="15 january 2024"),
+            self._make_entity("15 January 2025", normalized="15 january 2025"),
+        ]
+        resp = client.post("/api/v1/resolve", json={"entities": entities})
+        assert resp.status_code == 200
+        groups = resp.json()["resolved_groups"]
+        # DATE should be excluded entirely from resolution groups
+        date_groups = [g for g in groups if g["entity_type"] == "DATE"]
+        assert len(date_groups) == 0
+
+    def test_identical_dates_not_grouped(self, client: TestClient):
+        """Even identical dates must not appear in resolution output."""
+        entities = [
+            self._make_entity("15 January 2024", normalized="15 january 2024"),
+            self._make_entity("15 January 2024", normalized="15 january 2024"),
+        ]
+        resp = client.post("/api/v1/resolve", json={"entities": entities})
+        assert resp.status_code == 200
+        groups = resp.json()["resolved_groups"]
+        date_groups = [g for g in groups if g["entity_type"] == "DATE"]
+        assert len(date_groups) == 0
+
+    def test_date_with_other_types_only_others_resolved(self, client: TestClient):
+        """When dates and persons are both submitted, only persons are resolved."""
+        entities = [
+            self._make_entity("15 January 2024", "DATE", "15 january 2024"),
+            self._make_entity("Rajesh Kumar", "PERSON", "rajesh kumar"),
+            self._make_entity("RAJESH KUMAR", "PERSON", "rajesh kumar"),
+        ]
+        resp = client.post("/api/v1/resolve", json={"entities": entities})
+        assert resp.status_code == 200
+        groups = resp.json()["resolved_groups"]
+        types_in_groups = {g["entity_type"] for g in groups}
+        assert "DATE" not in types_in_groups
+        assert "PERSON" in types_in_groups
+
+
+# ------------------------------------------------------------------
+# 18. Deterministic Canonical Entity IDs
+# ------------------------------------------------------------------
+
+class TestDeterministicCanonicalIds:
+    """canonical_entity_id must be deterministic (SHA-256), not random."""
+
+    def _make_entity(self, value: str, entity_type: str = "PERSON",
+                     normalized: str | None = None) -> dict:
+        return {
+            "entity_id": f"test-{value}",
+            "entity_type": entity_type,
+            "value": value,
+            "normalized_value": normalized or value.lower().strip(),
+            "confidence": 0.9,
+            "start_offset": 0,
+            "end_offset": len(value),
+            "source_field": "fir_text",
+        }
+
+    def test_same_person_same_canonical_id(self, client: TestClient):
+        """Exact normalized variants must produce the same canonical_entity_id."""
+        entities = [
+            self._make_entity("Rajesh Kumar", normalized="rajesh kumar"),
+            self._make_entity("RAJESH KUMAR", normalized="rajesh kumar"),
+        ]
+        resp = client.post("/api/v1/resolve", json={"entities": entities})
+        groups = resp.json()["resolved_groups"]
+        person_groups = [g for g in groups if g["entity_type"] == "PERSON"]
+        assert len(person_groups) == 1
+        canonical_id_1 = person_groups[0]["canonical_entity_id"]
+
+        # Second independent call with the same input
+        resp2 = client.post("/api/v1/resolve", json={"entities": entities})
+        groups2 = resp2.json()["resolved_groups"]
+        person_groups2 = [g for g in groups2 if g["entity_type"] == "PERSON"]
+        assert len(person_groups2) == 1
+        canonical_id_2 = person_groups2[0]["canonical_entity_id"]
+
+        # Must be identical across calls
+        assert canonical_id_1 == canonical_id_2
+
+    def test_different_types_different_canonical_ids(self, client: TestClient):
+        """Same value but different entity types must produce different IDs."""
+        entities = [
+            self._make_entity("1234567890", "PERSON", "1234567890"),
+            self._make_entity("1234567890", "PHONE", "+911234567890"),
+        ]
+        resp = client.post("/api/v1/resolve", json={"entities": entities})
+        groups = resp.json()["resolved_groups"]
+        ids = [g["canonical_entity_id"] for g in groups]
+        # Must have 2 groups with different IDs
+        assert len(ids) == 2
+        assert ids[0] != ids[1]
+
+    def test_canonical_id_is_hex_string(self, client: TestClient):
+        """canonical_entity_id must be a valid hex string (SHA-256)."""
+        entities = [
+            self._make_entity("Rajesh Kumar", normalized="rajesh kumar"),
+        ]
+        resp = client.post("/api/v1/resolve", json={"entities": entities})
+        groups = resp.json()["resolved_groups"]
+        assert len(groups) == 1
+        cid = groups[0]["canonical_entity_id"]
+        # SHA-256 hex is 64 characters
+        assert len(cid) == 64
+        assert all(c in "0123456789abcdef" for c in cid)
+
+    def test_phone_exact_resolution_deterministic(self, client: TestClient):
+        """PHONE exact match must produce deterministic canonical ID."""
+        entities = [
+            self._make_entity("+91 98765 43210", "PHONE", "+919876543210"),
+            self._make_entity("09876543210", "PHONE", "+919876543210"),
+        ]
+        resp1 = client.post("/api/v1/resolve", json={"entities": entities})
+        resp2 = client.post("/api/v1/resolve", json={"entities": entities})
+        g1 = resp1.json()["resolved_groups"]
+        g2 = resp2.json()["resolved_groups"]
+        assert len(g1) == 1 and len(g2) == 1
+        assert g1[0]["canonical_entity_id"] == g2[0]["canonical_entity_id"]
+        assert g1[0]["resolution_method"] == "exact_match"
+
+    def test_vehicle_exact_resolution_deterministic(self, client: TestClient):
+        """VEHICLE exact match must produce deterministic canonical ID."""
+        entities = [
+            self._make_entity("AP 39 AB 1234", "VEHICLE", "AP39AB1234"),
+            self._make_entity("AP-39-AB-1234", "VEHICLE", "AP39AB1234"),
+        ]
+        resp = client.post("/api/v1/resolve", json={"entities": entities})
+        groups = resp.json()["resolved_groups"]
+        assert len(groups) == 1
+        assert groups[0]["resolution_method"] == "exact_match"
+        assert len(groups[0]["canonical_entity_id"]) == 64  # SHA-256
+
+    def test_upi_exact_resolution_deterministic(self, client: TestClient):
+        """UPI_ID exact match must produce deterministic canonical ID."""
+        entities = [
+            self._make_entity("rajesh@oksbi", "UPI_ID", "rajesh@oksbi"),
+            self._make_entity("RAJESH@OKSBI", "UPI_ID", "rajesh@oksbi"),
+        ]
+        resp = client.post("/api/v1/resolve", json={"entities": entities})
+        groups = resp.json()["resolved_groups"]
+        assert len(groups) == 1
+        assert groups[0]["resolution_method"] == "exact_match"
+        assert len(groups[0]["canonical_entity_id"]) == 64
