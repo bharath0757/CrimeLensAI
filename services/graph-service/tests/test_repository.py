@@ -4,7 +4,6 @@ import pytest
 from unittest.mock import MagicMock, patch
 from app.repositories.graph_repository import GraphRepository
 
-
 class TestGraphRepository:
     @pytest.fixture
     def repo(self):
@@ -13,7 +12,6 @@ class TestGraphRepository:
 
     def test_entity_exists_returns_true(self, repo):
         repository, driver = repo
-        # execute_read calls the tx function — mock it to return True
         session_mock = MagicMock()
         session_mock.execute_read.return_value = True
         driver.session.return_value.__enter__ = MagicMock(return_value=session_mock)
@@ -47,6 +45,36 @@ class TestGraphRepository:
         assert result == {"existed": False, "case_ids": ["CASE-001"]}
         session_mock.execute_write.assert_called_once()
 
+    def test_upsert_existed_logic(self, repo):
+        repository, driver = repo
+        session_mock = MagicMock()
+        
+        # We need to simulate the tx.run calls inside _do_upsert
+        def fake_execute_write(func):
+            tx = MagicMock()
+            
+            # The first tx.run is the MERGE which returns `existed`
+            merge_result = MagicMock()
+            merge_result.single.return_value = {"existed": True, "e": {}, "c": {}}
+            
+            # The second tx.run is the MATCH which returns cases
+            cases_result = [{"case_id": "CASE-123"}]
+            
+            tx.run.side_effect = [merge_result, cases_result]
+            
+            return func(tx)
+
+        session_mock.execute_write.side_effect = fake_execute_write
+        driver.session.return_value.__enter__ = MagicMock(return_value=session_mock)
+        driver.session.return_value.__exit__ = MagicMock(return_value=False)
+
+        res = repository.upsert_entity(
+            entity_id='1', entity_type='PHONE', value='123', canonical_value='123',
+            confidence=1.0, case_id='CASE-123', source_field='f', start_offset=0, end_offset=1
+        )
+        assert res['existed'] is True
+        assert res['case_ids'] == ["CASE-123"]
+
     def test_create_relationship_calls_execute_write(self, repo):
         repository, driver = repo
         session_mock = MagicMock()
@@ -54,7 +82,6 @@ class TestGraphRepository:
         driver.session.return_value.__enter__ = MagicMock(return_value=session_mock)
         driver.session.return_value.__exit__ = MagicMock(return_value=False)
 
-        # create_relationship should not raise
         repository.create_relationship(
             source_entity_id="a", target_entity_id="b",
             relationship_type="USES", source_case_id="CASE-001",
@@ -79,14 +106,13 @@ class TestGraphRepository:
     def test_get_shortest_path_calls_execute_read(self, repo):
         repository, driver = repo
         session_mock = MagicMock()
-        session_mock.execute_read.return_value = None  # No path found
+        session_mock.execute_read.return_value = None
         driver.session.return_value.__enter__ = MagicMock(return_value=session_mock)
         driver.session.return_value.__exit__ = MagicMock(return_value=False)
 
         result = repository.get_shortest_path("a", "b")
         assert result is None
         session_mock.execute_read.assert_called_once()
-
 
 class TestNeo4jConnectionManager:
     def test_verify_connectivity_returns_true_when_connected(self):

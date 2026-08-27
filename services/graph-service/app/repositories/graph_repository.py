@@ -7,6 +7,8 @@ class GraphRepository:
     def upsert_entity(self, entity_id, entity_type, value, canonical_value, confidence, case_id, source_field, start_offset, end_offset):
         def _do_upsert(tx):
             query = """
+            OPTIONAL MATCH (existing:Entity {id: $entity_id})
+            WITH existing IS NOT NULL AS existed
             MERGE (e:Entity {id: $entity_id})
             ON CREATE SET e.entity_type = $entity_type,
                           e.value = $value,
@@ -17,7 +19,7 @@ class GraphRepository:
                           e.end_offset = $end_offset
             MERGE (c:Case {case_id: $case_id})
             MERGE (c)-[:CONTAINS]->(e)
-            RETURN e, c
+            RETURN e, c, existed
             """
             result = tx.run(query, entity_id=entity_id, entity_type=entity_type, 
                             value=value, canonical_value=canonical_value, 
@@ -25,7 +27,7 @@ class GraphRepository:
                             source_field=source_field, start_offset=start_offset, 
                             end_offset=end_offset)
             record = result.single()
-            existed = record is None
+            existed = record["existed"] if record else False
             
             case_query = "MATCH (c:Case)-[:CONTAINS]->(e:Entity {id: $entity_id}) RETURN c.case_id AS case_id"
             case_res = tx.run(case_query, entity_id=entity_id)

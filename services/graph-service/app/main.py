@@ -21,6 +21,9 @@ async def lifespan(application: FastAPI):
         try:
             neo4j_manager.connect()
             logger.info("Neo4j connected at %s", settings.NEO4J_URI)
+            from app.api.routes import store
+            if hasattr(store, "hydrate"):
+                store.hydrate()
         except Exception as exc:
             logger.warning("Neo4j connection failed at startup: %s", exc)
     yield

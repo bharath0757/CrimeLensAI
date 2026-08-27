@@ -62,9 +62,11 @@ class InMemoryGraphStore:
             entity_type = payload.entity_type.value
             canonical = canonicalize(entity_type, payload.canonical_value or payload.value)
             key = (entity_type, canonical)
-            entity_id = self.canonical_index.get(key) or payload.id or str(
-                uuid.uuid5(uuid.NAMESPACE_URL, f"crimelens:entity:{entity_type}:{canonical}")
-            )
+            entity_id = payload.id
+            if not entity_id:
+                entity_id = self.canonical_index.get(key) or str(
+                    uuid.uuid5(uuid.NAMESPACE_URL, f"crimelens:entity:{entity_type}:{canonical}")
+                )
             existing_cases = sorted(case for case, ids in self.case_entities.items() if entity_id in ids)
             entity = self.entities.setdefault(entity_id, {
                 "id": entity_id,
@@ -357,16 +359,17 @@ class InMemoryGraphStore:
 class Neo4jGraphStore(InMemoryGraphStore):
     """Neo4j persistence with portable in-process analytics."""
 
-    def __init__(self, uri: str, user: str, password: str) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        from neo4j import GraphDatabase
+        self.repo = None
 
-        self.driver = GraphDatabase.driver(uri, auth=(user, password))
-        self.driver.verify_connectivity()
-        self._hydrate()
-
-    def _hydrate(self) -> None:
-        with self.driver.session() as session:
+    def hydrate(self) -> None:
+        from app.core.neo4j import neo4j_manager
+        from app.repositories.graph_repository import GraphRepository
+        
+        self.repo = GraphRepository(neo4j_manager.driver)
+        
+        with neo4j_manager.get_session() as session:
             rows = session.run(
                 "MATCH (c:Case)-[o:HAS_ENTITY]->(e:Entity) RETURN c.case_id AS case_id, e, properties(o) AS occurrence"
             )
@@ -397,36 +400,44 @@ class Neo4jGraphStore(InMemoryGraphStore):
         return result
 
     def _persist_entity(self, entity: dict[str, Any], case_id: str) -> None:
-        occurrence = next(item for item in reversed(entity["occurrences"]) if item["case_id"] == case_id)
-        with self.driver.session() as session:
-            session.run(
-                "MERGE (c:Case {case_id:$case_id}) "
-                "MERGE (e:Entity {id:$id}) SET e.entity_type=$entity_type, e.value=$value, "
-                "e.canonical_value=$canonical_value, e.confidence=$confidence "
-                "MERGE (c)-[o:HAS_ENTITY]->(e) SET o += $occurrence",
-                case_id=case_id, id=entity["id"], entity_type=entity["entity_type"], value=entity["value"],
-                canonical_value=entity["canonical_value"], confidence=entity["confidence"], occurrence=occurrence,
-            )
+        if not self.repo:
+            return
+        occurrence = next((item for item in reversed(entity["occurrences"]) if item["case_id"] == case_id), {})
+        self.repo.upsert_entity(
+            entity_id=entity["id"],
+            entity_type=entity["entity_type"],
+            value=entity["value"],
+            canonical_value=entity["canonical_value"],
+            confidence=entity["confidence"],
+            case_id=case_id,
+            source_field=occurrence.get("source_field", "unknown"),
+            start_offset=occurrence.get("start_offset", 0),
+            end_offset=occurrence.get("end_offset", 0)
+        )
 
     def _persist_relationship(self, relation: dict[str, Any]) -> None:
-        with self.driver.session() as session:
-            session.run(
-                "MATCH (a:Entity {id:$source}), (b:Entity {id:$target}) "
-                "MERGE (a)-[r:RELATED {id:$id}]->(b) SET r += $properties",
-                source=relation["source_entity_id"], target=relation["target_entity_id"], id=relation["id"],
-                properties={key: value for key, value in relation.items() if key not in {"source_entity_id", "target_entity_id"}},
-            )
+        if not self.repo:
+            return
+        self.repo.create_relationship(
+            source_entity_id=relation["source_entity_id"],
+            target_entity_id=relation["target_entity_id"],
+            relationship_type=relation.get("relationship_type", "RELATED"),
+            source_case_id=relation.get("source_case_id", ""),
+            confidence=relation.get("confidence", 1.0),
+            why_linked=relation.get("why_linked", ""),
+            relationship_id=relation["id"],
+            evidence_record_id=relation.get("evidence_record_id")
+        )
 
     def _persist_alert(self, alert: dict[str, Any]) -> None:
-        with self.driver.session() as session:
+        if not self.repo:
+            return
+        with self.repo._driver.session() as session:
             session.run("MERGE (a:LinkAlert {id:$id}) SET a += $properties", id=alert["id"], properties=alert)
 
 
 def build_store() -> InMemoryGraphStore:
+    import os
     if os.getenv("GRAPH_BACKEND", "memory").lower() != "neo4j":
         return InMemoryGraphStore()
-    return Neo4jGraphStore(
-        os.getenv("NEO4J_URI", "bolt://neo4j:7687"),
-        os.getenv("NEO4J_USER", "neo4j"),
-        os.getenv("NEO4J_PASSWORD", "neo4j_dev_password"),
-    )
+    return Neo4jGraphStore()
