@@ -7,6 +7,8 @@
 
 @import "tailwindcss";
 
+@custom-variant dark (&:is(.dark *));
+
 /* ---- CSS Custom Properties (Design Tokens) ---- */
 @theme {
   --color-primary-50: #eef2ff;

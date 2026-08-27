@@ -45,10 +45,20 @@ async function request<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (err: any) {
+    // Catch unhandled network errors (e.g. backend unreachable, CORS failure)
+    throw {
+      status: 0,
+      message: "Unable to connect to CrimeLensAI services. Please check if the backend is running.",
+      errors: [err.message || "Failed to fetch"],
+    } as ApiError;
+  }
 
   if (!response.ok) {
     const error: ApiError = {
