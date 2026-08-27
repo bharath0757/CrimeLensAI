@@ -1,22 +1,33 @@
-"""
-CrimeLensAI — Graph Service
-============================
-FastAPI microservice wrapping Neo4j for cross-case linkage analysis.
+"""CrimeLensAI — Graph Service"""
 
-Provides Cypher-backed endpoints for:
-- Cross-case entity linkage (shared suspects, vehicles, phone numbers)
-- Centrality analysis (identifying key nodes in criminal networks)
-- Community detection (clustering related cases/entities)
-- Shortest-path queries (how two entities are connected)
-- Human-readable "why linked" explanations for every relationship
-
-Part of the AI-Powered Criminal Network Analysis System (SIH 2026).
-"""
+import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router as api_router
+from app.core.config import get_settings
+from app.core.neo4j import neo4j_manager
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    """Startup/shutdown lifecycle for Neo4j connection."""
+    settings = get_settings()
+    if settings.GRAPH_BACKEND.lower() == "neo4j":
+        try:
+            neo4j_manager.connect()
+            logger.info("Neo4j connected at %s", settings.NEO4J_URI)
+        except Exception as exc:
+            logger.warning("Neo4j connection failed at startup: %s", exc)
+    yield
+    if settings.GRAPH_BACKEND.lower() == "neo4j":
+        neo4j_manager.close()
+        logger.info("Neo4j connection closed")
+
 
 app = FastAPI(
     title="CrimeLensAI — Graph Service",
@@ -28,6 +39,7 @@ app = FastAPI(
     version="0.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -43,12 +55,24 @@ app.include_router(api_router)
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Health check endpoint. Also verifies Neo4j connectivity."""
+    """Health check with Neo4j connectivity verification."""
+    settings = get_settings()
     from app.api.routes import store
 
+    neo4j_status = "not_configured"
+    if settings.GRAPH_BACKEND.lower() == "neo4j":
+        try:
+            connected = neo4j_manager.verify_connectivity()
+            neo4j_status = "connected" if connected else "unavailable"
+        except Exception:
+            neo4j_status = "unavailable"
+
+    overall = "healthy" if neo4j_status != "unavailable" else "degraded"
+
     return {
-        "status": "healthy",
-        "service": "graph",
-        "version": "0.1.0",
+        "status": overall,
+        "service": settings.SERVICE_NAME,
+        "version": settings.SERVICE_VERSION,
+        "neo4j": neo4j_status,
         "backend": store.__class__.__name__,
     }
