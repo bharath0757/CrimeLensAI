@@ -35,13 +35,21 @@ export function Login() {
       navigate("/dashboard", { replace: true });
     } catch (err: any) {
       console.error("Login Error:", err);
+      let msg = "Invalid login credentials.";
       if (err.status === 0) {
-        setError(err.message || "Unable to connect to authentication service.");
+        msg = typeof err.message === "string" ? err.message : "Unable to connect to authentication service.";
       } else if (err.status === 401 || err.status === 403) {
-        setError("Invalid username or password.");
-      } else {
-        setError(err.message || "An unexpected error occurred during login.");
+        msg = "Invalid username or password.";
+      } else if (typeof err.message === "string") {
+        msg = err.message;
+      } else if (err.detail) {
+        if (Array.isArray(err.detail)) {
+          msg = err.detail[0]?.msg || "Validation error.";
+        } else if (typeof err.detail === "string") {
+          msg = err.detail;
+        }
       }
+      setError(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -60,7 +68,7 @@ export function Login() {
         <form onSubmit={handleSubmit} className="space-y-5">
           {error && (
             <div className="bg-danger-50 text-danger-700 border border-danger-200 dark:bg-danger-500/10 dark:border-danger-500/20 dark:text-danger-500 p-3 rounded-lg text-sm font-medium transition-colors">
-              ⚠️ {error}
+              ⚠️ {typeof error === 'string' ? error : ((error as any)?.detail?.[0]?.msg || (error as any)?.detail || 'Invalid login credentials')}
             </div>
           )}
 

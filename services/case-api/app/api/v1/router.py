@@ -10,6 +10,7 @@ from app.api.v1.endpoints import (
     graph,
     search,
     dashboard,
+    ledger,
 )
 
 api_router = APIRouter()
@@ -23,3 +24,4 @@ api_router.include_router(relationships.router, tags=["Relationship Management"]
 api_router.include_router(graph.router, tags=["Graph & Network Analysis"])
 api_router.include_router(search.router, prefix="/search", tags=["Search"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard & Analytics"])
+api_router.include_router(ledger.router, prefix="/ledger", tags=["Ledger Audit Trail"])

@@ -56,6 +56,74 @@ class InMemoryEntityRepository(EntityRepositoryInterface):
 
     def __init__(self):
         self._entities: Dict[str, Dict[str, Any]] = {}
+        self._seed_sample_entities()
+
+    def _seed_sample_entities(self):
+        now = datetime.now(timezone.utc)
+        seeds = [
+            {
+                "id": "ent-sample-001",
+                "case_id": "case-sample-001",
+                "name": "Vikram Sharma",
+                "entity_type": EntityType.PERSON,
+                "description": "Primary suspect in cyber fraud syndicate",
+                "properties": {},
+                "confidence_score": 0.95,
+                "status": "PENDING",
+                "created_at": now,
+                "updated_at": now,
+            },
+            {
+                "id": "ent-sample-002",
+                "case_id": "case-sample-001",
+                "name": "9876543210",
+                "entity_type": EntityType.PHONE_NUMBER,
+                "description": "Suspect communication phone number",
+                "properties": {},
+                "confidence_score": 0.98,
+                "status": "CONFIRMED",
+                "created_at": now,
+                "updated_at": now,
+            },
+            {
+                "id": "ent-sample-003",
+                "case_id": "case-sample-001",
+                "name": "UP32-AB-1234",
+                "entity_type": EntityType.VEHICLE,
+                "description": "Vehicle identified near crime scene",
+                "properties": {},
+                "confidence_score": 0.88,
+                "status": "PENDING",
+                "created_at": now,
+                "updated_at": now,
+            },
+            {
+                "id": "ent-sample-004",
+                "case_id": "case-sample-002",
+                "name": "9876543210",
+                "entity_type": EntityType.PHONE_NUMBER,
+                "description": "Shared contact phone number across Hawala network",
+                "properties": {},
+                "confidence_score": 0.98,
+                "status": "CONFIRMED",
+                "created_at": now,
+                "updated_at": now,
+            },
+            {
+                "id": "ent-sample-005",
+                "case_id": "case-sample-002",
+                "name": "Lucknow Main Branch",
+                "entity_type": EntityType.LOCATION,
+                "description": "Hawala money drop location",
+                "properties": {},
+                "confidence_score": 0.90,
+                "status": "PENDING",
+                "created_at": now,
+                "updated_at": now,
+            },
+        ]
+        for s in seeds:
+            self._entities[s["id"]] = s
 
     async def get_by_id(self, entity_id: str) -> Optional[EntityResponse]:
         e = self._entities.get(entity_id)

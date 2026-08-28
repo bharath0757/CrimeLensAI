@@ -57,9 +57,9 @@ class InMemoryCaseRepository(CaseRepositoryInterface):
         self._seed_sample_case()
 
     def _seed_sample_case(self):
-        case_id = "case-sample-001"
-        self._cases[case_id] = {
-            "id": case_id,
+        case_id_1 = "case-sample-001"
+        self._cases[case_id_1] = {
+            "id": case_id_1,
             "case_number": "CASE-2026-001",
             "title": "Operation CyberLabyrinth Fraud Ring",
             "description": "Investigation into multi-jurisdictional financial fraud and identity theft syndicate.",
@@ -68,9 +68,27 @@ class InMemoryCaseRepository(CaseRepositoryInterface):
             "owner_id": "user-inv-002",
             "assigned_investigator_ids": ["user-inv-002", "user-admin-001"],
             "tags": ["fraud", "cybercrime", "wire-transfer"],
-            "document_count": 0,
-            "entity_count": 0,
-            "relationship_count": 0,
+            "document_count": 2,
+            "entity_count": 3,
+            "relationship_count": 2,
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
+        }
+
+        case_id_2 = "case-sample-002"
+        self._cases[case_id_2] = {
+            "id": case_id_2,
+            "case_number": "CASE-2026-002",
+            "title": "Lucknow Hawala Money Syndicate",
+            "description": "Cross-border illicit money transfer network linked to suspicious phone numbers.",
+            "status": CaseStatus.IN_PROGRESS,
+            "priority": CasePriority.CRITICAL,
+            "owner_id": "user-admin-001",
+            "assigned_investigator_ids": ["user-admin-001"],
+            "tags": ["hawala", "financial_fraud", "lucknow"],
+            "document_count": 1,
+            "entity_count": 3,
+            "relationship_count": 1,
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc),
         }

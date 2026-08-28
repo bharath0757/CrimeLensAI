@@ -51,6 +51,33 @@ async def get_dashboard_summary(
     )
 
 
+@router.get("/stats", summary="Get Dashboard Stat Cards Metrics")
+async def get_dashboard_stats(
+    case_repo: CaseRepositoryInterface = Depends(get_case_repository),
+    ent_repo: EntityRepositoryInterface = Depends(get_entity_repository),
+    rel_repo: RelationshipRepositoryInterface = Depends(get_relationship_repository),
+) -> Any:
+    """Retrieve stat cards data for investigator dashboard."""
+    total_cases = await case_repo.count()
+    total_ents = await ent_repo.count()
+    total_rels = await rel_repo.count()
+    
+    pending_reviews = 0
+    if hasattr(ent_repo, "_entities"):
+        pending_reviews = sum(1 for e in getattr(ent_repo, "_entities", {}).values() if e.get("status", "PENDING") == "PENDING")
+
+    return {
+        "totalCases": total_cases,
+        "entitiesExtracted": total_ents,
+        "crossCaseLinks": total_rels,
+        "pendingReviews": pending_reviews,
+        "total_cases": total_cases,
+        "total_entities": total_ents,
+        "cross_case_links": total_rels,
+        "pending_reviews": pending_reviews,
+    }
+
+
 @router.get("/statistics", response_model=DashboardStatisticsResponse, summary="Get Dashboard Breakdown Statistics")
 async def get_dashboard_statistics(
     current_user: UserResponse = Depends(get_current_user),

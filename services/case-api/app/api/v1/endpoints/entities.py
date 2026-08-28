@@ -199,3 +199,29 @@ async def ingest_ai_extraction_results(
         relationships_created=relationships_count,
         message="AI extraction results ingested successfully.",
     )
+
+
+@router.post("/entities/{entity_id}/confirm", response_model=EntityResponse, summary="Confirm Extracted Entity")
+async def confirm_entity(
+    entity_id: str,
+    ent_repo: EntityRepositoryInterface = Depends(get_entity_repository),
+) -> Any:
+    entity = await ent_repo.get_by_id(entity_id)
+    if not entity:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+    if hasattr(ent_repo, "_entities") and entity_id in getattr(ent_repo, "_entities", {}):
+        ent_repo._entities[entity_id]["status"] = "CONFIRMED"
+    return await ent_repo.get_by_id(entity_id)
+
+
+@router.post("/entities/{entity_id}/reject", response_model=EntityResponse, summary="Reject Extracted Entity")
+async def reject_entity(
+    entity_id: str,
+    ent_repo: EntityRepositoryInterface = Depends(get_entity_repository),
+) -> Any:
+    entity = await ent_repo.get_by_id(entity_id)
+    if not entity:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+    if hasattr(ent_repo, "_entities") and entity_id in getattr(ent_repo, "_entities", {}):
+        ent_repo._entities[entity_id]["status"] = "REJECTED"
+    return await ent_repo.get_by_id(entity_id)

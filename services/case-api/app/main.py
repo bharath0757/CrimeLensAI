@@ -14,14 +14,14 @@ app = FastAPI(
 )
 
 # Configure CORS
-if settings.ALLOWED_ORIGINS:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.ALLOWED_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+origins = list(settings.ALLOWED_ORIGINS) if settings.ALLOWED_ORIGINS else ["*"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Register Exception Handlers
 app.add_exception_handler(CrimeLensException, crimelens_exception_handler)
