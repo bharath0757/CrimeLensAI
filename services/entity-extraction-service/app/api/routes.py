@@ -1,16 +1,25 @@
 """
 Extraction Service — API Routes
 ================================
-Endpoints for entity extraction from raw case text.
+Endpoints for entity extraction and resolution from raw case text.
 """
 
 from fastapi import APIRouter
 
+from app.extractors.nlp_pipeline import extract_entities as run_extraction
+from app.extractors.resolver import resolve_entities as run_resolution
+from app.models.schemas import (
+    ExtractionRequest,
+    ExtractionResponse,
+    ResolutionRequest,
+    ResolutionResponse,
+)
+
 router = APIRouter(prefix="/api/v1", tags=["Extraction"])
 
 
-@router.post("/extract")
-async def extract_entities(payload: dict):
+@router.post("/extract", response_model=ExtractionResponse)
+async def extract_entities(request: ExtractionRequest) -> ExtractionResponse:
     """
     Extract entities from raw text input.
 
@@ -21,28 +30,18 @@ async def extract_entities(payload: dict):
     - confidence: 0.0–1.0 confidence score
     - start_offset / end_offset: character positions in source text
     - source_field: which input field the entity was found in
-
-    TODO: Wire up spaCy NER pipeline + regex extractors
     """
-    return {
-        "status": "ok",
-        "message": "Extraction endpoint placeholder — wire up spaCy pipeline here",
-        "entities": [],
-    }
+    entities = run_extraction(request.text, request.source_type)
+    return ExtractionResponse(status="ok", entities=entities)
 
 
-@router.post("/resolve")
-async def resolve_entities(payload: dict):
+@router.post("/resolve", response_model=ResolutionResponse)
+async def resolve_entities(request: ResolutionRequest) -> ResolutionResponse:
     """
     Fuzzy-match and resolve entity variants across cases.
 
     Given a list of extracted entities, groups them by likely identity
     (e.g., "Rajesh Kumar", "R. Kumar", "Rajesh K." → same person).
-
-    TODO: Implement fuzzy matching with rapidfuzz / dedupe
     """
-    return {
-        "status": "ok",
-        "message": "Entity resolution endpoint placeholder",
-        "resolved_groups": [],
-    }
+    groups = run_resolution(request.entities)
+    return ResolutionResponse(status="ok", resolved_groups=groups)
