@@ -260,22 +260,37 @@ async def check_nlp_connection():
     Uses the exact HTTPAIService logic to test the connection and report details.
     """
     from app.core.config import settings
-    url = settings.ai_service_url.rstrip("/") + "/api/v1/extract"
-    payload = {"text": "Diagnostic test", "source_type": "fir_text"}
+    import urllib.parse
+    
+    # Strip credentials and query
+    parsed = urllib.parse.urlparse(settings.ai_service_url)
+    safe_url = parsed._replace(netloc=parsed.hostname + (f":{parsed.port}" if parsed.port else ""), query="", fragment="").geturl() if parsed.hostname else settings.ai_service_url
+
+    base_url = settings.ai_service_url.rstrip("/")
+    path = "/extract" if base_url.endswith("/api/v1") else "/api/v1/extract"
     
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(url, json=payload, timeout=5.0)
+        async with httpx.AsyncClient(base_url=base_url) as client:
+            resp = await client.post(path, json={"text": "Rajesh Kumar called +91-9876543210 from Hyderabad.", "source_type": "fir_text"}, timeout=5.0)
+            try:
+                computed = str(resp.request.url)
+            except RuntimeError:
+                computed = "unknown"
             return {
-                "configured_url": settings.ai_service_url,
-                "tested_url": url,
+                "configured_url": safe_url,
+                "computed_url": computed,
                 "status_code": resp.status_code,
                 "response_body": resp.text[:1000]
             }
     except Exception as exc:
+        computed = "unknown"
+        try:
+            computed = str(exc.request.url)
+        except Exception:
+            pass
         return {
-            "configured_url": settings.ai_service_url,
-            "tested_url": url,
+            "configured_url": safe_url,
+            "computed_url": computed,
             "error_type": type(exc).__name__,
             "error_msg": str(exc)
         }
