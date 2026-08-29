@@ -11,7 +11,9 @@ Covers:
 """
 
 import pytest
-from unittest.mock import AsyncMock
+import pytest
+import httpx
+from unittest.mock import patch, AsyncMock
 
 from app.api import routes
 
@@ -243,6 +245,40 @@ class TestDownstreamFailure:
         resp = client.post("/api/v1/cases", json={"title": "Empty Case"})
         assert resp.status_code == 201
         mock_ai.extract_entities.assert_not_called()
+
+
+class TestDiagnosticEndpoint:
+    """GET /api/v1/diagnostics/nlp"""
+
+    def test_diagnostics_success(self, client):
+        from app.core.config import settings
+        
+        async def handler(request: httpx.Request) -> httpx.Response:
+            assert "/api/v1/extract" in str(request.url)
+            return httpx.Response(200, text="success")
+
+        with patch("httpx.AsyncClient", autospec=True) as MockClient:
+            mock_client = AsyncMock()
+            mock_client.post.return_value = httpx.Response(200, text="success")
+            # We need to mock the async context manager
+            MockClient.return_value.__aenter__.return_value = mock_client
+            
+            resp = client.get("/api/v1/diagnostics/nlp")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status_code"] == 200
+            assert data["response_body"] == "success"
+
+    def test_diagnostics_error(self, client):
+        with patch("httpx.AsyncClient", autospec=True) as MockClient:
+            mock_client = AsyncMock()
+            mock_client.post.side_effect = httpx.ConnectError("Connection failed")
+            MockClient.return_value.__aenter__.return_value = mock_client
+            
+            resp = client.get("/api/v1/diagnostics/nlp")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["error_type"] == "ConnectError"
 
 
 # ════════════════════════════════════════════════════════════

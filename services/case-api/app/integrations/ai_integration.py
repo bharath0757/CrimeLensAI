@@ -102,9 +102,11 @@ class HTTPAIService(AIServiceBase):
         Response: { "entities": [...] }
         """
         client = self._get_client()
+        # Fix: ensure we don't duplicate /api/v1 if AI_SERVICE_URL already includes it
+        path = "/extract" if self._base_url.endswith("/api/v1") else "/api/v1/extract"
         try:
             response = await client.post(
-                "/api/v1/extract",
+                path,
                 json={"text": text, "source_type": source_type},
             )
             response.raise_for_status()
@@ -135,9 +137,11 @@ class HTTPAIService(AIServiceBase):
         Response: { "resolved_groups": [...] }
         """
         client = self._get_client()
+        # Fix: ensure we don't duplicate /api/v1 if AI_SERVICE_URL already includes it
+        path = "/resolve" if self._base_url.endswith("/api/v1") else "/api/v1/resolve"
         try:
             response = await client.post(
-                "/api/v1/resolve",
+                path,
                 json={"entities": entities},
             )
             response.raise_for_status()

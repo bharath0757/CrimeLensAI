@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Optional
+import httpx
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
@@ -84,6 +85,12 @@ async def create_case(payload: CaseCreate) -> CaseResponse:
                 for e in raw_entities
             ]
             notes.append(f"NLP: extracted {len(extracted_entities)} entities")
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            url = str(exc.request.url)
+            body = exc.response.text[:1000]
+            logger.warning("NLP extraction failed for case %s: %s %s - %s", case.id, status, url, body)
+            notes.append(f"NLP: extraction failed (HTTPStatusError: {status} {url} - {body})")
         except Exception as exc:
             logger.warning("NLP extraction failed for case %s: %s", case.id, exc)
             notes.append(f"NLP: extraction failed ({type(exc).__name__})")
@@ -244,3 +251,31 @@ async def confirm_entity(entity_id: str):
 async def reject_entity(entity_id: str):
     """Reject an extracted entity. Placeholder for ledger integration."""
     return {"entity_id": entity_id, "message": "Entity rejection placeholder"}
+
+
+@router.get("/diagnostics/nlp")
+async def check_nlp_connection():
+    """
+    Diagnostic endpoint to verify AI_SERVICE_URL + /api/v1/extract
+    Uses the exact HTTPAIService logic to test the connection and report details.
+    """
+    from app.core.config import settings
+    url = settings.ai_service_url.rstrip("/") + "/api/v1/extract"
+    payload = {"text": "Diagnostic test", "source_type": "fir_text"}
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload, timeout=5.0)
+            return {
+                "configured_url": settings.ai_service_url,
+                "tested_url": url,
+                "status_code": resp.status_code,
+                "response_body": resp.text[:1000]
+            }
+    except Exception as exc:
+        return {
+            "configured_url": settings.ai_service_url,
+            "tested_url": url,
+            "error_type": type(exc).__name__,
+            "error_msg": str(exc)
+        }
