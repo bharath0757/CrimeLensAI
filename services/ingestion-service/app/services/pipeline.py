@@ -76,7 +76,7 @@ async def _ensure_entity(client: httpx.AsyncClient, real_case_id: str, name: str
     existing_items = exist_res.json().get("items", [])
     
     for e in existing_items:
-        if e.get("name", "").lower() == name.lower():
+        if e.get("name", "").lower() == name.lower() and e.get("entity_type") == entity_type:
             return e.get("id")
             
     ent_res = await client.post(f"{CASE_API_URL}/cases/{real_case_id}/entities", json={
@@ -138,7 +138,7 @@ async def process_fir(payload: FIRPayload):
                 "description": payload.description,
                 "case_number": payload.case_number,
                 "priority": "MEDIUM",
-                "tags": ["FIR", payload.district]
+                "tags": ["FIR", payload.district, payload.case_id]
             }, headers=headers)
             case_res.raise_for_status()
             real_case_id = case_res.json()["id"]
@@ -189,10 +189,7 @@ async def process_cdr(payload: CDRPayload):
     headers = {"Authorization": f"Bearer {token}"}
     
     async with httpx.AsyncClient(timeout=30.0) as client:
-        search_case_id = payload.case_id
-        if search_case_id.startswith("CASE-"):
-            search_case_id = "CR-2023-" + search_case_id.split("-")[1]
-        real_case_id = await _get_real_case_id(client, search_case_id, headers)
+        real_case_id = await _get_real_case_id(client, payload.case_id, headers)
         
         caller_id = await _ensure_entity(client, real_case_id, payload.caller_phone, "PHONE_NUMBER", headers)
         receiver_id = await _ensure_entity(client, real_case_id, payload.receiver_phone, "PHONE_NUMBER", headers)
@@ -228,10 +225,7 @@ async def process_transaction(payload: TransactionPayload):
     headers = {"Authorization": f"Bearer {token}"}
     
     async with httpx.AsyncClient(timeout=30.0) as client:
-        search_case_id = payload.case_id
-        if search_case_id.startswith("CASE-"):
-            search_case_id = "CR-2023-" + search_case_id.split("-")[1]
-        real_case_id = await _get_real_case_id(client, search_case_id, headers)
+        real_case_id = await _get_real_case_id(client, payload.case_id, headers)
         
         sender_id = await _ensure_entity(client, real_case_id, payload.sender_upi, "BANK_ACCOUNT", headers)
         receiver_id = await _ensure_entity(client, real_case_id, payload.receiver_upi, "BANK_ACCOUNT", headers)
