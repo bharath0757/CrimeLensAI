@@ -4,9 +4,11 @@ import spacy
 try:
     nlp = spacy.load('en_core_web_sm')
 except OSError:
-    import spacy.cli
-    spacy.cli.download('en_core_web_sm')
-    nlp = spacy.load('en_core_web_sm')
+    raise RuntimeError(
+        "Spacy model 'en_core_web_sm' is missing. "
+        "Please install it before running the service using: "
+        "python -m spacy download en_core_web_sm"
+    )
 
 # Regex patterns for deterministic extraction
 PHONE_PATTERN = re.compile(r'\+91\d{10}')
