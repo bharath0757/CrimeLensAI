@@ -25,7 +25,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
-def create_access_token(subject: str | Any, expires_delta: Optional[timedelta] = None, extra_claims: Optional[Dict[str, Any]] = None) -> str:
+def create_access_token(subject: Any, expires_delta: Optional[timedelta] = None, extra_claims: Optional[Dict[str, Any]] = None) -> str:
     """Create signed JWT access token."""
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
