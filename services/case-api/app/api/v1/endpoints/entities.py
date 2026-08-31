@@ -45,6 +45,11 @@ async def create_entity(
 
     entity = await ent_repo.create(case_id, entity_create)
     await case_repo.update_counts(case_id, entity_delta=1)
+    from app.integrations.graph_integration import graph_service_integration
+    try:
+        await graph_service_integration.sync_entity(case_id, entity)
+    except Exception as e:
+        import logging; logging.error(f'Graph sync failed: {e}')
     return entity
 
 
