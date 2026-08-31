@@ -1,4 +1,4 @@
-"""
+﻿"""
 Comprehensive test suite for the Case API.
 
 Covers:
@@ -109,7 +109,7 @@ class TestUpdateCase:
     def test_update_not_found(self, client):
         resp = client.put(
             "/api/v1/cases/nonexistent",
-            json={"title": "X"},
+            json={"title": "XXX"},
         )
         assert resp.status_code == 404
 
@@ -355,3 +355,24 @@ class TestHealth:
         resp = client.get("/health")
         assert resp.status_code == 200
         assert resp.json()["status"] == "healthy"
+    def test_nlp_entity_shape_regression(self):
+        from app.schemas.entity import ExtractedEntity
+        
+        # Test the exact production NLP shape
+        raw_entity = {
+            "id": None,
+            "entity_type": "PERSON",
+            "value": "Rajesh Kumar",
+            "confidence": 0.85,
+            "start_offset": 0,
+            "end_offset": 12,
+            "source_field": "text",
+            "case_id": None,
+            "confirmed": None
+        }
+        
+        # Ensure it can be parsed by ExtractedEntity without errors
+        entity = ExtractedEntity(**raw_entity)
+        assert entity.entity_type == "PERSON"
+        assert entity.value == "Rajesh Kumar"
+        assert entity.confidence == 0.85

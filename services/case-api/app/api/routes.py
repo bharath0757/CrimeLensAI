@@ -1,4 +1,4 @@
-"""
+﻿"""
 API Service — Routes
 =====================
 Public Case API endpoints with real CRUD, NLP orchestration,
@@ -39,7 +39,7 @@ from app.schemas.entity import ExtractedEntity
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1", tags=["Cases"])
+router = APIRouter(tags=["Cases"])
 
 # ── Dependency singletons ─────────────────────────────────
 case_repo = CaseRepository()
@@ -76,14 +76,14 @@ async def create_case(payload: CaseCreate) -> CaseResponse:
                 text_to_extract, "fir_text"
             )
             raw_entities = nlp_result.get("entities", [])
-            extracted_entities = [
-                ExtractedEntity(
-                    **e,
-                    case_id=case.id,
-                )
-                if isinstance(e, dict) else e
-                for e in raw_entities
-            ]
+            extracted_entities = []
+            for e in raw_entities:
+                if isinstance(e, dict):
+                    entity_data = dict(e)
+                    entity_data["case_id"] = case.id
+                    extracted_entities.append(ExtractedEntity(**entity_data))
+                else:
+                    extracted_entities.append(e)
             notes.append(f"NLP: extracted {len(extracted_entities)} entities")
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code

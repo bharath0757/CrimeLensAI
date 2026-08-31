@@ -1,64 +1,49 @@
-"""
-CrimeLensAI — API Service (Orchestration Layer)
-=================================================
-The public-facing Case API and orchestration gateway.
-
-Responsibilities:
-- Case CRUD (create, read, update, delete cases)
-- Search across cases and entities
-- Ingestion validation (clean and validate incoming data before extraction)
-- Aggregation calls across extraction, graph, and ledger services
-- PostgreSQL datastore for cases, entities, and users tables
-
-This is the only service the frontend talks to directly.
-All cross-service coordination flows through here.
-
-Part of the AI-Powered Criminal Network Analysis System (SIH 2026).
-"""
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import router as api_router
+from app.api.v1.router import api_router
+from app.core.config import settings
+from app.core.exceptions import CrimeLensException, crimelens_exception_handler, generic_exception_handler
 
 app = FastAPI(
-    title="CrimeLensAI — API Gateway",
-    description=(
-        "Orchestration layer and public Case API. Handles case CRUD, search, "
-        "ingestion validation, and coordinates calls to extraction, graph, "
-        "and ledger services. PostgreSQL-backed."
-    ),
-    version="0.1.0",
+    title=settings.PROJECT_NAME,
+    version=settings.VERSION,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
+# Configure CORS
+origins = list(settings.ALLOWED_ORIGINS) if settings.ALLOWED_ORIGINS else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(api_router)
+# Register Exception Handlers
+app.add_exception_handler(CrimeLensException, crimelens_exception_handler)
+app.add_exception_handler(Exception, generic_exception_handler)
+
+# Include API Routers
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
 
-@app.get("/health", tags=["Health"])
-async def health_check():
-    """
-    Health check endpoint.
-    Also reports connectivity to downstream services and PostgreSQL.
-    """
-    # TODO: Add actual health checks for Postgres + downstream services
+@app.get("/", include_in_schema=False)
+async def root():
+    return {
+        "message": "Welcome to CrimeLens AI Backend API. Visit /docs for API documentation.",
+        "health": f"{settings.API_V1_STR}/health",
+    }
+
+
+@app.get("/health", summary="Health Check")
+async def health_check_alias():
     return {
         "status": "healthy",
-        "service": "api",
-        "version": "0.1.0",
-        "dependencies": {
-            "postgres": "not_checked",
-            "extraction": "not_checked",
-            "graph": "not_checked",
-            "ledger": "not_checked",
-        },
+        "message": "CrimeLens AI backend is operating normally.",
+        "app": settings.PROJECT_NAME,
+        "version": settings.VERSION,
     }

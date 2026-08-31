@@ -2,112 +2,144 @@
  * CrimeLensAI — Dashboard Page
  *
  * Investigator Dashboard: stat cards showing key metrics,
- * case linkage graph visualization placeholder (Cytoscape.js / react-force-graph),
- * and entity profile panel with confirm/reject actions.
+ * collapsible overview, and a link to the detailed Network Analysis workspace.
  */
 
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { api } from "../lib/api";
+
+interface StatData {
+  totalCases: number;
+  entitiesExtracted: number;
+  crossCaseLinks: number;
+  pendingReviews: number;
+}
+
 export function Dashboard() {
-  // Placeholder stats — will be fetched from /api/v1/dashboard/stats
+  const [statsData, setStatsData] = useState<StatData>({
+    totalCases: 0,
+    entitiesExtracted: 0,
+    crossCaseLinks: 0,
+    pendingReviews: 0,
+  });
+  const [statsStatus, setStatsStatus] = useState<"loading" | "success" | "error">("loading");
+  const [isOverviewExpanded, setIsOverviewExpanded] = useState(true);
+
+  // Fetch Dashboard Stats
+  useEffect(() => {
+    const fetchStats = async () => {
+      setStatsStatus("loading");
+      try {
+        const data = await api.dashboard.stats() as any;
+        setStatsData({
+          totalCases: data.totalCases ?? 0,
+          entitiesExtracted: data.entitiesExtracted ?? 0,
+          crossCaseLinks: data.crossCaseLinks ?? 0,
+          pendingReviews: data.pendingReviews ?? 0,
+        });
+        setStatsStatus("success");
+      } catch (error) {
+        console.error("Failed to fetch dashboard stats:", error);
+        setStatsStatus("error");
+      }
+    };
+    fetchStats();
+  }, []);
+
   const stats = [
-    { label: "Total Cases", value: "0", icon: "📁", color: "from-primary-500 to-primary-700" },
-    { label: "Entities Extracted", value: "0", icon: "🔍", color: "from-emerald-500 to-emerald-700" },
-    { label: "Cross-Case Links", value: "0", icon: "🔗", color: "from-amber-500 to-amber-700" },
-    { label: "Pending Reviews", value: "0", icon: "⏳", color: "from-rose-500 to-rose-700" },
+    { label: "Total Cases", value: statsStatus === "error" ? "—" : statsStatus === "loading" ? "..." : statsData.totalCases.toString(), icon: "📁", color: "from-primary-500 to-primary-700", borderClass: "border-t-primary-500 dark:border-t-transparent" },
+    { label: "Entities Extracted", value: statsStatus === "error" ? "—" : statsStatus === "loading" ? "..." : statsData.entitiesExtracted.toString(), icon: "🔍", color: "from-emerald-500 to-emerald-700", borderClass: "border-t-emerald-500 dark:border-t-transparent" },
+    { label: "Cross-Case Links", value: statsStatus === "error" ? "—" : statsStatus === "loading" ? "..." : statsData.crossCaseLinks.toString(), icon: "🔗", color: "from-amber-500 to-amber-700", borderClass: "border-t-amber-500 dark:border-t-transparent" },
+    { label: "Pending Reviews", value: statsStatus === "error" ? "—" : statsStatus === "loading" ? "..." : statsData.pendingReviews.toString(), icon: "⏳", color: "from-rose-500 to-rose-700", borderClass: "border-t-rose-500 dark:border-t-transparent" },
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 relative z-10">
       {/* Page Header */}
       <div>
-        <h1 className="text-2xl font-bold text-white">Investigator Dashboard</h1>
-        <p className="text-surface-200 mt-1">
-          Overview of case activity, entity extraction, and cross-case linkages.
+        <h1 className="text-2xl font-bold text-surface-900 dark:text-white transition-colors">Investigator Dashboard</h1>
+        <p className="text-surface-600 dark:text-surface-200 mt-1 transition-colors">
+          Clean investigator overview
         </p>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className="bg-surface-900 border border-surface-800 rounded-xl p-6 hover:border-primary-500/30 transition-all duration-300"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-surface-200">{stat.label}</p>
-                <p className="text-3xl font-bold mt-2 bg-gradient-to-r bg-clip-text text-transparent" style={{ backgroundImage: `linear-gradient(to right, var(--tw-gradient-stops))` }}>
-                  {stat.value}
-                </p>
-              </div>
-              <span className="text-3xl">{stat.icon}</span>
-            </div>
-          </div>
-        ))}
+      {/* Collapsible Overview Header */}
+      <div className="flex items-center justify-between border-b border-surface-200 dark:border-surface-800 pb-2">
+        <h2 className="text-lg font-semibold text-surface-900 dark:text-white transition-colors">Dashboard Overview</h2>
+        <button 
+          onClick={() => setIsOverviewExpanded(!isOverviewExpanded)}
+          className="text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 rounded px-2 py-1"
+          aria-label={isOverviewExpanded ? "Collapse dashboard overview" : "Expand dashboard overview"}
+          aria-expanded={isOverviewExpanded}
+        >
+          {isOverviewExpanded ? "[Collapse]" : "[Expand]"}
+        </button>
       </div>
 
-      {/* Case Linkage Graph + Entity Panel */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Graph Visualization Placeholder */}
-        <div className="lg:col-span-2 bg-surface-900 border border-surface-800 rounded-xl p-6 min-h-[400px]">
-          <h2 className="text-lg font-semibold text-white mb-4">Case Linkage Network</h2>
-          <div className="flex items-center justify-center h-80 border-2 border-dashed border-surface-700 rounded-lg">
-            <div className="text-center text-surface-200">
-              <p className="text-4xl mb-3">🕸️</p>
-              <p className="font-medium">Graph Visualization</p>
-              <p className="text-sm mt-1">
-                Wire up Cytoscape.js or react-force-graph here.
-              </p>
-              <p className="text-xs mt-2 text-surface-200">
-                Displays entity nodes and cross-case relationships
-              </p>
-            </div>
+      {/* Expandable Content */}
+      {isOverviewExpanded && (
+        <div className="space-y-8 animate-in fade-in slide-in-from-top-2 duration-300">
+          {/* Stat Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {stats.map((stat) => (
+              <div
+                key={stat.label}
+                className={`bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl p-6 shadow-sm dark:shadow-none hover:shadow-md dark:hover:shadow-none hover:border-primary-500/30 dark:hover:border-primary-500/30 transition-all duration-300 border-t-4 ${stat.borderClass}`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-surface-600 dark:text-surface-200 transition-colors">{stat.label}</p>
+                    <p className="text-3xl font-bold mt-2 bg-gradient-to-r bg-clip-text text-transparent" style={{ backgroundImage: `linear-gradient(to right, var(--tw-gradient-stops))` }}>
+                      {stat.value}
+                    </p>
+                  </div>
+                  <span className="text-3xl">{stat.icon}</span>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
-
-        {/* Entity Profile Panel */}
-        <div className="bg-surface-900 border border-surface-800 rounded-xl p-6">
-          <h2 className="text-lg font-semibold text-white mb-4">Entity Profile</h2>
-          <div className="space-y-4">
-            <p className="text-sm text-surface-200">
-              Select an entity from the graph to view its profile, linked cases,
-              and take confirm/reject actions.
+          
+          <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl p-6 shadow-sm dark:shadow-none transition-colors">
+            <h3 className="font-medium text-surface-900 dark:text-white mb-2">Summary / Important Info</h3>
+            <p className="text-sm text-surface-600 dark:text-surface-300">
+              Your pending reviews are currently tracking {statsData.pendingReviews} entities. Prioritize these for validation to improve the graph accuracy.
             </p>
-            <div className="border-t border-surface-800 pt-4 space-y-3">
-              <div className="bg-surface-800/50 rounded-lg p-3">
-                <p className="text-xs text-surface-200">Entity Type</p>
-                <p className="text-sm font-medium">—</p>
-              </div>
-              <div className="bg-surface-800/50 rounded-lg p-3">
-                <p className="text-xs text-surface-200">Value</p>
-                <p className="text-sm font-medium">—</p>
-              </div>
-              <div className="bg-surface-800/50 rounded-lg p-3">
-                <p className="text-xs text-surface-200">Confidence</p>
-                <p className="text-sm font-medium">—</p>
-              </div>
-              <div className="bg-surface-800/50 rounded-lg p-3">
-                <p className="text-xs text-surface-200">Linked Cases</p>
-                <p className="text-sm font-medium">—</p>
-              </div>
-            </div>
-            {/* Confirm / Reject Actions */}
-            <div className="flex gap-3 pt-2">
-              <button
-                disabled
-                className="flex-1 px-4 py-2 bg-success-600/20 text-success-500 rounded-lg text-sm font-medium border border-success-500/30 disabled:opacity-50 cursor-not-allowed"
-              >
-                ✓ Confirm
-              </button>
-              <button
-                disabled
-                className="flex-1 px-4 py-2 bg-danger-600/20 text-danger-500 rounded-lg text-sm font-medium border border-danger-500/30 disabled:opacity-50 cursor-not-allowed"
-              >
-                ✕ Reject
-              </button>
-            </div>
           </div>
         </div>
+      )}
+
+      {/* Call to Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Network Analysis Call to Action */}
+        <div className="bg-gradient-to-r from-primary-50 to-indigo-50 dark:from-primary-900/20 dark:to-indigo-900/20 border border-primary-100 dark:border-primary-500/20 rounded-xl p-8 shadow-sm text-center flex flex-col items-center transition-colors">
+          <h2 className="text-xl font-bold text-surface-900 dark:text-white mb-2">Explore the Network</h2>
+          <p className="text-surface-600 dark:text-surface-300 mb-6 text-sm flex-1">
+            Dive into the interactive criminal network visualization to examine case linkages, nodes, and entity profiles in a dedicated workspace.
+          </p>
+          <Link 
+            to="/network"
+            className="px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-md shadow-primary-500/20 transition-all focus:outline-none focus:ring-4 focus:ring-primary-500/30 w-full md:w-auto"
+          >
+            Open Network Analysis
+          </Link>
+        </div>
+
+        {/* Case Linkage Call to Action */}
+        <div className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-100 dark:border-emerald-500/20 rounded-xl p-8 shadow-sm text-center flex flex-col items-center transition-colors">
+          <h2 className="text-xl font-bold text-surface-900 dark:text-white mb-2">Discover Case Linkages</h2>
+          <p className="text-surface-600 dark:text-surface-300 mb-6 text-sm flex-1">
+            Investigate explicit connections between cases. Identify shared entities, locations, and personnel driving multi-case criminal activity.
+          </p>
+          <Link 
+            to="/case-linkage"
+            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium shadow-md shadow-emerald-500/20 transition-all focus:outline-none focus:ring-4 focus:ring-emerald-500/30 w-full md:w-auto"
+          >
+            Explore Case Linkages
+          </Link>
+        </div>
       </div>
+
     </div>
   );
 }

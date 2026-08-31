@@ -1,1 +1,3 @@
-# CrimeLensAI API Service — app package
+"""
+CrimeLens AI Backend Application Package.
+"""

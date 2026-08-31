@@ -1,4 +1,4 @@
-"""
+﻿"""
 CrimeLensAI — Graph Service Integration
 ==========================================
 HTTP client for communicating with the deployed Graph (Neo4j) service.
@@ -31,6 +31,25 @@ logger = logging.getLogger(__name__)
 # ---- Abstract interface ----
 
 class GraphServiceBase(ABC):
+    @abstractmethod
+    async def get_case_graph(self, case_id: str) -> dict[str, Any]:
+        pass
+
+    @abstractmethod
+    async def get_entity_connections(self, entity_id: str) -> dict[str, Any]:
+        pass
+
+    @abstractmethod
+    async def get_entity_neighbors(self, entity_id: str, depth: int) -> dict[str, Any]:
+        pass
+
+    @abstractmethod
+    async def get_graph_stats(self, case_id: str) -> dict[str, Any]:
+        pass
+
+    @abstractmethod
+    async def get_shortest_path(self, source_entity_id: str, target_entity_id: str) -> dict[str, Any]:
+        pass
     """Interface for Graph service integration."""
 
     @abstractmethod
@@ -69,6 +88,20 @@ class GraphServiceBase(ABC):
 # ---- Mock implementation ----
 
 class MockGraphService(GraphServiceBase):
+    async def get_case_graph(self, case_id: str) -> dict[str, Any]:
+        return {"case_id": case_id, "nodes": [], "edges": [], "stats": {}}
+
+    async def get_entity_connections(self, entity_id: str) -> dict[str, Any]:
+        return {"entity_id": entity_id, "entity_name": "dummy", "entity_type": "dummy", "connections_count": 0, "connected_nodes": [], "edges": []}
+
+    async def get_entity_neighbors(self, entity_id: str, depth: int) -> dict[str, Any]:
+        return {"entity_id": entity_id, "depth": depth, "total_neighbors": 0, "nodes": [], "edges": []}
+
+    async def get_graph_stats(self, case_id: str) -> dict[str, Any]:
+        return {"density": 0.0, "avg_degree": 0.0, "top_hubs": []}
+
+    async def get_shortest_path(self, source_entity_id: str, target_entity_id: str) -> dict[str, Any]:
+        return {"source_entity_id": source_entity_id, "target_entity_id": target_entity_id, "path_found": False, "hop_count": 0, "nodes": [], "edges": []}
     """
     In-process mock that returns placeholder results.
     Useful for local development and testing without the Graph service.
@@ -138,7 +171,7 @@ class HTTPGraphService(GraphServiceBase):
             write=settings.http_read_timeout,
             pool=settings.http_connect_timeout,
         )
-        self._client: httpx.AsyncClient | None = None
+        self._client: Optional[httpx.AsyncClient] = None
 
     def _get_client(self) -> httpx.AsyncClient:
         """Lazy-initialize the HTTP client (no startup dependency)."""
@@ -154,8 +187,8 @@ class HTTPGraphService(GraphServiceBase):
         method: str,
         path: str,
         *,
-        json: dict[str, Any] | None = None,
-        params: dict[str, str] | None = None,
+        json: Optional[dict[str, Any]] = None,
+        params: Optional[dict[str, str]] = None,
     ) -> dict[str, Any]:
         """
         Make a request to the Graph service with error handling.
@@ -223,6 +256,21 @@ class HTTPGraphService(GraphServiceBase):
             params={"entity_a": entity_a, "entity_b": entity_b},
         )
 
+    async def get_case_graph(self, case_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/api/v1/cases/{case_id}/graph")
+
+    async def get_entity_connections(self, entity_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/api/v1/entities/{entity_id}/connections")
+
+    async def get_entity_neighbors(self, entity_id: str, depth: int) -> dict[str, Any]:
+        return await self._request("GET", f"/api/v1/entities/{entity_id}/neighbors", params={"depth": str(depth)})
+
+    async def get_graph_stats(self, case_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/api/v1/cases/{case_id}/graph/stats")
+
+    async def get_shortest_path(self, source_entity_id: str, target_entity_id: str) -> dict[str, Any]:
+        return await self._request("GET", "/api/v1/shortest-path", params={"entity_a": source_entity_id, "entity_b": target_entity_id})
+
     async def close(self) -> None:
         """Close the underlying HTTP client."""
         if self._client is not None and not self._client.is_closed:
@@ -245,3 +293,7 @@ def get_graph_service() -> GraphServiceBase:
         return HTTPGraphService()
     logger.info("Using mock Graph service")
     return MockGraphService()
+
+
+
+

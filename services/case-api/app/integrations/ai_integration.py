@@ -1,4 +1,4 @@
-"""
+﻿"""
 CrimeLensAI — AI / NLP Service Integration
 =============================================
 HTTP client for communicating with the deployed NLP (entity-extraction) service.
@@ -27,6 +27,13 @@ logger = logging.getLogger(__name__)
 # ---- Abstract interface ----
 
 class AIServiceBase(ABC):
+    @abstractmethod
+    async def process_document(self, document_id: str, case_id: str, file_path: str) -> bool:
+        pass
+
+    @abstractmethod
+    async def get_processing_status(self, document_id: str) -> dict[str, Any]:
+        pass
     """Interface for AI/NLP service integration."""
 
     @abstractmethod
@@ -45,6 +52,11 @@ class AIServiceBase(ABC):
 # ---- Mock implementation ----
 
 class MockAIService(AIServiceBase):
+    async def process_document(self, document_id: str, case_id: str, file_path: str) -> bool:
+        return True
+
+    async def get_processing_status(self, document_id: str) -> dict[str, Any]:
+        return {"document_id": document_id, "processing_status": "COMPLETED", "case_id": "dummy-case-id"}
     """
     In-process mock that returns empty results.
     Useful for local development and testing without the NLP service.
@@ -81,7 +93,7 @@ class HTTPAIService(AIServiceBase):
             write=settings.http_read_timeout,
             pool=settings.http_connect_timeout,
         )
-        self._client: httpx.AsyncClient | None = None
+        self._client: Optional[httpx.AsyncClient] = None
 
     def _get_client(self) -> httpx.AsyncClient:
         """Lazy-initialize the HTTP client (no startup dependency)."""
@@ -162,6 +174,12 @@ class HTTPAIService(AIServiceBase):
             )
             raise
 
+    async def process_document(self, document_id: str, case_id: str, file_path: str) -> bool:
+        return True
+
+    async def get_processing_status(self, document_id: str) -> dict[str, Any]:
+        return {"document_id": document_id, "processing_status": "COMPLETED", "case_id": "dummy-case-id"}
+
     async def close(self) -> None:
         """Close the underlying HTTP client."""
         if self._client is not None and not self._client.is_closed:
@@ -184,3 +202,6 @@ def get_ai_service() -> AIServiceBase:
         return HTTPAIService()
     logger.info("Using mock NLP service")
     return MockAIService()
+
+
+

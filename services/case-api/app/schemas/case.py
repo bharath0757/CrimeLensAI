@@ -1,20 +1,29 @@
-"""
-Case schemas for the Case API.
-Mirrors the CaseCreate / CaseResponse from contracts/python/schemas.py
-with additions for orchestration status tracking.
-"""
-
+﻿from enum import Enum
+from typing import List, Optional
 from datetime import datetime
-from typing import Optional
-
-from pydantic import BaseModel
-
+from pydantic import BaseModel, Field, ConfigDict
 from app.schemas.entity import ExtractedEntity
 
+class CaseStatus(str, Enum):
+    OPEN = "OPEN"
+    IN_PROGRESS = "IN_PROGRESS"
+    CLOSED = "CLOSED"
+    ARCHIVED = "ARCHIVED"
+    DRAFT = "DRAFT"
+    PROCESSING = "PROCESSING"
+    ACTIVE = "ACTIVE"
 
-class CaseCreate(BaseModel):
-    """POST /api/v1/cases request body."""
-    title: str
+class CasePriority(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+class CaseBase(BaseModel):
+    title: str = Field(..., min_length=3, max_length=150)
+    description: Optional[str] = Field(None, max_length=2000)
+    priority: CasePriority = CasePriority.MEDIUM
+    tags: List[str] = Field(default_factory=list)
     fir_text: Optional[str] = None
     call_records: Optional[str] = None
     financial_logs: Optional[str] = None
@@ -23,35 +32,50 @@ class CaseCreate(BaseModel):
     station: Optional[str] = None
     filing_date: Optional[datetime] = None
 
+class CaseCreate(CaseBase):
+    case_number: Optional[str] = None
+    assigned_investigator_ids: List[str] = Field(default_factory=list)
 
 class CaseUpdate(BaseModel):
-    """PUT /api/v1/cases/{case_id} request body."""
-    title: Optional[str] = None
+    title: Optional[str] = Field(None, min_length=3, max_length=150)
+    description: Optional[str] = Field(None, max_length=2000)
+    status: Optional[str] = None
+    priority: Optional[CasePriority] = None
+    assigned_investigator_ids: Optional[List[str]] = None
+    tags: Optional[List[str]] = None
     fir_text: Optional[str] = None
     district: Optional[str] = None
     station: Optional[str] = None
-    status: Optional[str] = None
 
+class CaseStatusUpdate(BaseModel):
+    status: CaseStatus
 
-class CaseResponse(BaseModel):
-    """Case API response shape matching the OpenAPI contract."""
+class CaseResponse(CaseBase):
     id: str
-    title: str
+    case_number: Optional[str] = None
     status: str = "DRAFT"
-    district: Optional[str] = None
-    station: Optional[str] = None
-    filing_date: Optional[datetime] = None
+    owner_id: Optional[str] = None
+    assigned_investigator_ids: List[str] = Field(default_factory=list)
+    document_count: int = 0
+    entity_count: int = 0
+    relationship_count: int = 0
     created_at: datetime
     updated_at: datetime
-    entities: list[ExtractedEntity] = []
+    entities: List[ExtractedEntity] = []
     linked_case_count: int = 0
     processing_notes: Optional[str] = None
 
+    model_config = ConfigDict(from_attributes=True)
+
+class CaseListResponse(BaseModel):
+    total: int
+    skip: int
+    limit: int
+    items: List[CaseResponse]
 
 class DashboardStats(BaseModel):
-    """GET /api/v1/dashboard/stats response."""
     total_cases: int = 0
     total_entities: int = 0
     cross_case_links: int = 0
     pending_reviews: int = 0
-    cases_by_status: dict[str, int] = {}
+    cases_by_status: dict = {}
