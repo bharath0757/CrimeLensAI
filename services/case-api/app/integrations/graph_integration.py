@@ -39,6 +39,23 @@ class GraphServiceInterface(ABC):
         pass
 
     @abstractmethod
+        @abstractmethod
+    async def get_case_linkage(self, case_id: str) -> dict:
+        pass
+
+    @abstractmethod
+    async def get_case_linkage(self, case_id: str) -> dict:
+        import httpx
+        import os
+        base_url = os.getenv("GRAPH_SERVICE_URL", "http://localhost:8002").rstrip("/") + "/api/v1"
+        async with httpx.AsyncClient() as client:
+            try:
+                r = await client.get(f"{base_url}/linkage/{case_id}")
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return {"case_id": case_id, "linked_cases": [], "message": f"Graph service unavailable: {str(e)}"}
+
     async def get_shortest_path(self, source_entity_id: str, target_entity_id: str) -> ShortestPathResponse:
         """Calculate shortest network path between two entities."""
         pass
@@ -232,6 +249,11 @@ class MockGraphService(GraphServiceInterface):
             top_connected_entities=top_entities,
         )
 
+        @abstractmethod
+    async def get_case_linkage(self, case_id: str) -> dict:
+        pass
+
+    @abstractmethod
     async def get_shortest_path(self, source_entity_id: str, target_entity_id: str) -> ShortestPathResponse:
         src = await self._ent_repo.get_by_id(source_entity_id)
         tgt = await self._ent_repo.get_by_id(target_entity_id)

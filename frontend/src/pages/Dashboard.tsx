@@ -13,7 +13,7 @@ interface StatData {
   totalCases: number;
   entitiesExtracted: number;
   crossCaseLinks: number;
-  pendingReviews: number;
+  pendingReviews: number | null;
 }
 
 export function Dashboard() {
@@ -21,7 +21,7 @@ export function Dashboard() {
     totalCases: 0,
     entitiesExtracted: 0,
     crossCaseLinks: 0,
-    pendingReviews: 0,
+    pendingReviews: null,
   });
   const [statsStatus, setStatsStatus] = useState<"loading" | "success" | "error">("loading");
   const [isOverviewExpanded, setIsOverviewExpanded] = useState(true);
@@ -51,7 +51,7 @@ export function Dashboard() {
     { label: "Total Cases", value: statsStatus === "error" ? "—" : statsStatus === "loading" ? "..." : statsData.totalCases.toString(), icon: "📁", color: "from-primary-500 to-primary-700", borderClass: "border-t-primary-500 dark:border-t-transparent" },
     { label: "Entities Extracted", value: statsStatus === "error" ? "—" : statsStatus === "loading" ? "..." : statsData.entitiesExtracted.toString(), icon: "🔍", color: "from-emerald-500 to-emerald-700", borderClass: "border-t-emerald-500 dark:border-t-transparent" },
     { label: "Cross-Case Links", value: statsStatus === "error" ? "—" : statsStatus === "loading" ? "..." : statsData.crossCaseLinks.toString(), icon: "🔗", color: "from-amber-500 to-amber-700", borderClass: "border-t-amber-500 dark:border-t-transparent" },
-    { label: "Pending Reviews", value: statsStatus === "error" ? "—" : statsStatus === "loading" ? "..." : statsData.pendingReviews.toString(), icon: "⏳", color: "from-rose-500 to-rose-700", borderClass: "border-t-rose-500 dark:border-t-transparent" },
+    { label: "Pending Reviews", value: statsStatus === "error" ? "—" : statsStatus === "loading" ? "..." : statsData.pendingReviews !== null ? statsData.pendingReviews.toString() : 'N/A', icon: "⏳", color: "from-rose-500 to-rose-700", borderClass: "border-t-rose-500 dark:border-t-transparent" },
   ];
 
   return (
@@ -103,7 +103,7 @@ export function Dashboard() {
           <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl p-6 shadow-sm dark:shadow-none transition-colors">
             <h3 className="font-medium text-surface-900 dark:text-white mb-2">Summary / Important Info</h3>
             <p className="text-sm text-surface-600 dark:text-surface-300">
-              Your pending reviews are currently tracking {statsData.pendingReviews} entities. Prioritize these for validation to improve the graph accuracy.
+              Your pending reviews are currently tracking {statsData.pendingReviews !== null ? statsData.pendingReviews : 'an unknown number of'} entities. Prioritize these for validation to improve the graph accuracy.
             </p>
           </div>
         </div>

@@ -107,3 +107,18 @@ async def get_shortest_path(
 
     path_result = await graph_service.get_shortest_path(source_entity_id, target_entity_id)
     return path_result
+
+@router.get("/cases/{case_id}/linkage", summary="Get Cross-Case Linkage")
+async def get_case_linkage(
+    case_id: str,
+    current_user: UserResponse = Depends(get_current_user),
+    case_repo: CaseRepositoryInterface = Depends(get_case_repository),
+    graph_service: GraphServiceInterface = Depends(get_graph_service),
+) -> Any:
+    """Find cases linked to the specified case through shared entities."""
+    case = await case_repo.get_by_id(case_id)
+    if not case:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found.")
+
+    linkage = await graph_service.get_case_linkage(case_id)
+    return linkage

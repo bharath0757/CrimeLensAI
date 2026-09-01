@@ -207,7 +207,7 @@ export const api = {
         totalCases: data.totalCases ?? data.total_cases ?? 0,
         entitiesExtracted: data.entitiesExtracted ?? data.total_entities ?? 0,
         crossCaseLinks: data.crossCaseLinks ?? data.total_relationships ?? 0,
-        pendingReviews: data.pendingReviews ?? data.pending_reviews ?? 0,
+        pendingReviews: data.pendingReviews ?? data.pending_reviews ?? null,
       };
     },
   },
@@ -215,6 +215,7 @@ export const api = {
   // Entities
   graph: {
     getCaseGraph: (caseId: string) => request(`/api/v1/cases/${caseId}/graph`),
+    getCaseLinkage: (caseId: string) => request(`/api/v1/cases/${caseId}/linkage`),
   },
 
   // Entities
