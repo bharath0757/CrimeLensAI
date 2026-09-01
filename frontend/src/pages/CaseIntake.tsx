@@ -54,37 +54,13 @@ export function CaseIntake() {
     setExtractionStatus("loading");
     setExtractionError(null);
     
-    // NOTE: /api/v1/extract endpoint is missing from backend API contract.
-    // Simulating extraction on the frontend to demonstrate UX flow.
+    // The backend /extract API contract is missing from the API gateway
     setTimeout(() => {
-      try {
-        const mockEntities: ExtractedEntity[] = [];
-        if (firText.toLowerCase().includes("lakh") || firText.includes("stolen")) {
-          mockEntities.push({ id: "1", type: "LOCATION", value: metadata.district || "Unknown District", confidence: 0.85 });
-        }
-        
-        // Simple mock regex for phones (10 digits)
-        const phoneRegex = /\b\d{10}\b/g;
-        let match;
-        let idCounter = 2;
-        while ((match = phoneRegex.exec(firText)) !== null) {
-          mockEntities.push({ id: String(idCounter++), type: "PHONE", value: match[0], confidence: 0.95 });
-        }
-
-        if (mockEntities.length > 0) {
-          setExtractedEntities(mockEntities);
-          setExtractionStatus("success");
-        } else {
-          setExtractedEntities([]);
-          setExtractionStatus("empty");
-        }
-      } catch (err) {
-        setExtractionStatus("error");
-        setExtractionError("Extraction failed. Note: The backend /extract API contract is missing.");
-      } finally {
-        setIsExtracting(false);
-      }
-    }, 1200);
+      setExtractionStatus("error");
+      setExtractionError("Extraction failed. Backend /extract API endpoint is unavailable.");
+      setExtractedEntities([]);
+      setIsExtracting(false);
+    }, 500);
   };
 
   const isFormValid = () => {

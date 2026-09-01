@@ -39,6 +39,8 @@ const TYPE_COLORS: Record<string, string> = {
 export function NetworkAnalysis() {
   const { theme } = useTheme();
 
+  const [cases, setCases] = useState<any[]>([]);
+  const [selectedCaseId, setSelectedCaseId] = useState<string>("");
   const [graphStatus, setGraphStatus] = useState<"loading" | "success" | "error" | "empty">("loading");
   const [graphData, setGraphData] = useState<{ nodes: GraphNode[]; links: GraphLink[] }>({ nodes: [], links: [] });
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -50,75 +52,48 @@ export function NetworkAnalysis() {
   const [dimensions, setDimensions] = useState({ width: 0, height: 600 });
 
   // Fetch Graph Data based on existing Cases API since a dedicated Graph API is missing
+  // Fetch cases on mount
+  useEffect(() => {
+    const loadCases = async () => {
+      try {
+        const casesData = await api.cases.list(0, 100) as any;
+        const items = Array.isArray(casesData) ? casesData : (casesData?.items || []);
+        setCases(items);
+        if (items.length > 0) {
+          setSelectedCaseId(items[0].id || items[0]._id || items[0].firNumber);
+        }
+      } catch (e) {
+        console.error("Failed to load cases", e);
+      }
+    };
+    loadCases();
+  }, []);
+
   const fetchGraphData = useCallback(async () => {
+    if (!selectedCaseId) return;
     setGraphStatus("loading");
     setSelectedNode(null);
     setActionFeedback(null);
     try {
-      // Integration point: attempting to build network from existing cases
-      const casesData = await api.cases.list(0, 100) as any;
-      const cases = Array.isArray(casesData) ? casesData : (casesData?.items || []);
-
-      const nodes: GraphNode[] = [];
-      const links: GraphLink[] = [];
-      const nodeIds = new Set<string>();
-
-      cases.forEach((c: any) => {
-        const caseId = c.id || c._id || c.firNumber;
-        const caseName = c.title || c.firNumber || "Unknown Case";
-        if (!caseId) return;
-
-        if (!nodeIds.has(caseId)) {
-          nodes.push({
-            id: caseId,
-            name: caseName,
-            type: "CASE",
-            val: 5,
-            color: TYPE_COLORS["CASE"]
-          });
-          nodeIds.add(caseId);
-        }
-
-        if (Array.isArray(c.entities)) {
-          c.entities.forEach((e: any) => {
-            const entId = e.id || e.value;
-            if (!entId) return;
-
-            if (!nodeIds.has(entId)) {
-              nodes.push({
-                id: entId,
-                name: e.value,
-                type: e.type || "UNKNOWN",
-                val: 3,
-                confidence: e.confidence,
-                status: e.status || "PENDING",
-                linkedCaseNames: [caseName],
-                color: TYPE_COLORS[e.type] || "#94a3b8" // slate-400 fallback
-              });
-              nodeIds.add(entId);
-            } else {
-              // Increment linked cases for entities
-              const existingNode = nodes.find(n => n.id === entId);
-              if (existingNode && existingNode.type !== "CASE") {
-                if (!existingNode.linkedCaseNames) existingNode.linkedCaseNames = [];
-                if (!existingNode.linkedCaseNames.includes(caseName)) {
-                  existingNode.linkedCaseNames.push(caseName);
-                }
-              }
-            }
-
-            links.push({
-              source: caseId,
-              target: entId
-            });
-          });
-        }
-      });
+      const graphRes: any = await api.graph.getCaseGraph(selectedCaseId);
+      
+      const nodes: GraphNode[] = (graphRes.nodes || []).map((n: any) => ({
+        id: n.id,
+        name: n.label,
+        type: n.type,
+        val: n.type === "CASE" ? 5 : 3,
+        color: TYPE_COLORS[n.type] || "#94a3b8",
+        confidence: n.confidence_score,
+      }));
+      
+      const links: GraphLink[] = (graphRes.edges || []).map((e: any) => ({
+        source: e.source,
+        target: e.target,
+      }));
 
       if (nodes.length > 0) {
         setGraphData({ nodes, links });
         setGraphStatus("success");
-        // Auto zoom to fit after graph loads
         setTimeout(() => {
           if (graphRef.current) {
             graphRef.current.zoomToFit(400, 50);
@@ -135,7 +110,7 @@ export function NetworkAnalysis() {
 
   useEffect(() => {
     fetchGraphData();
-  }, [fetchGraphData]);
+  }, [fetchGraphData, selectedCaseId]);
 
   // Handle Resize for ForceGraph
   useEffect(() => {
@@ -234,6 +209,20 @@ export function NetworkAnalysis() {
         <div className="lg:col-span-3 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl p-4 shadow-sm dark:shadow-none flex flex-col h-full transition-colors relative">
           
           <div className="flex justify-between items-center mb-4 relative z-10 shrink-0">
+            <div className="flex items-center gap-4">
+              <select 
+                value={selectedCaseId} 
+                onChange={(e) => setSelectedCaseId(e.target.value)}
+                className="px-3 py-1.5 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded text-sm text-surface-900 dark:text-white"
+              >
+                <option value="" disabled>Select a Case</option>
+                {cases.map((c: any) => (
+                  <option key={c.id || c.firNumber} value={c.id || c.firNumber}>
+                    {c.title || c.firNumber}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="flex flex-wrap gap-3">
               {Object.entries(TYPE_COLORS).map(([type, color]) => (
                 <div key={type} className="flex items-center gap-1.5">

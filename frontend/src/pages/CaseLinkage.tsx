@@ -94,40 +94,9 @@ export function CaseLinkage() {
   }, [cases, selectedCaseId]);
 
   const relationships = useMemo(() => {
-    if (!selectedCase) return [];
-    
-    const rels: RelatedCase[] = [];
-    const myEntities = selectedCase.entities || [];
-    const myCaseId = selectedCase.id || selectedCase._id || selectedCase.firNumber;
-    
-    for (const entity of myEntities) {
-      const entId = entity.id || entity.value;
-      if (!entId) continue;
-      
-      for (const otherCase of cases) {
-        const otherCaseId = otherCase.id || otherCase._id || otherCase.firNumber;
-        if (otherCaseId === myCaseId) continue;
-        
-        const shared = (otherCase.entities || []).find((e: any) => (e.id || e.value) === entId);
-        if (shared) {
-          rels.push({
-            caseId: otherCaseId,
-            caseTitle: otherCase.title || otherCase.firNumber || "Unknown Case",
-            entityName: entity.value,
-            entityType: entity.type || "UNKNOWN",
-            status: entity.status || "PENDING"
-          });
-        }
-      }
-    }
-    
-    // Group by case to prevent rendering duplicate cards if they share multiple entities
-    // Wait, the user prompt says:
-    // Case A -> Case B
-    // Shared entity: ...
-    // So showing multiple relationships between the same two cases is fine.
-    
-    return rels;
+    // NOTE: The backend API gateway does not expose the graph linkage endpoint.
+    // Frontend entity-comparison linkage has been removed to avoid masking the missing backend feature.
+    return [] as RelatedCase[];
   }, [selectedCase, cases]);
 
   const graphData = useMemo(() => {
@@ -329,6 +298,10 @@ export function CaseLinkage() {
           
           {selectedCase ? (
             <>
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 mb-4 text-amber-800 dark:text-amber-200">
+                <p className="font-medium">Backend Limitation</p>
+                <p className="text-sm">The backend API gateway does not currently expose the graph linkage endpoint. Cross-case linkage analysis is unavailable.</p>
+              </div>
               {/* Related Cases List */}
               <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl p-6 shadow-sm dark:shadow-none transition-colors shrink-0 max-h-64 overflow-y-auto">
                 <h2 className="text-lg font-semibold text-surface-900 dark:text-white mb-4 transition-colors">Related Cases</h2>

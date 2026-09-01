@@ -29,37 +29,6 @@ interface ApiError {
   detail?: any;
 }
 
-/**
- * Default fallback cases when backend API is unreachable or returns an error.
- * Prevents UI from ever showing "Unable to load".
- */
-const FALLBACK_CASES = [
-  {
-    id: "case-sample-001",
-    case_number: "CASE-2026-001",
-    title: "Operation CyberLabyrinth Fraud Ring",
-    description: "Investigation into multi-jurisdictional financial fraud and identity theft syndicate.",
-    status: "OPEN",
-    priority: "HIGH",
-    entities: [
-      { id: "ent-001", value: "Vikram Sharma", type: "PERSON", confidence: 0.95, status: "PENDING" },
-      { id: "ent-002", value: "9876543210", type: "PHONE", confidence: 0.98, status: "CONFIRMED" },
-      { id: "ent-003", value: "UP32-AB-1234", type: "VEHICLE", confidence: 0.88, status: "PENDING" },
-    ],
-  },
-  {
-    id: "case-sample-002",
-    case_number: "CASE-2026-002",
-    title: "Lucknow Hawala Money Syndicate",
-    description: "Cross-border illicit money transfer network linked to suspicious phone numbers.",
-    status: "IN_PROGRESS",
-    priority: "CRITICAL",
-    entities: [
-      { id: "ent-002", value: "9876543210", type: "PHONE", confidence: 0.98, status: "CONFIRMED" },
-      { id: "ent-004", value: "Lucknow Main Branch", type: "LOCATION", confidence: 0.90, status: "PENDING" },
-    ],
-  },
-];
 
 /**
  * Make an authenticated API request.
@@ -158,14 +127,13 @@ export const api = {
           })
         );
 
-        const resultItems = enrichedItems.length > 0 ? enrichedItems : FALLBACK_CASES;
+        const resultItems = enrichedItems;
 
         return Array.isArray(response)
           ? resultItems
           : { total: resultItems.length, skip, limit, items: resultItems };
-      } catch {
-        // Return default fallback cases on API failure so Network Analysis & Case Linkage never display "Unable to load"
-        return { total: FALLBACK_CASES.length, skip: 0, limit: 50, items: FALLBACK_CASES };
+      } catch (err) {
+        throw err;
       }
     },
 
@@ -186,22 +154,10 @@ export const api = {
         priority: data.priority || "MEDIUM",
       };
 
-      let createdCase: any;
-      try {
-        createdCase = await request("/api/v1/cases", {
-          method: "POST",
-          body: JSON.stringify(casePayload),
-        });
-      } catch {
-        createdCase = {
-          id: `case-${Date.now()}`,
-          case_number: data.firNumber || `CASE-${Date.now()}`,
-          title: data.title,
-          description: data.firText || data.description,
-          status: "OPEN",
-          priority: "MEDIUM",
-        };
-      }
+            const createdCase = await request<any>("/api/v1/cases", {
+        method: "POST",
+        body: JSON.stringify(casePayload),
+      });
 
       const createdCaseId = createdCase?.id;
       if (createdCaseId && Array.isArray(data.entities)) {
@@ -211,18 +167,14 @@ export const api = {
           if (entType === "ORG") entType = "ORGANIZATION";
           if (entType === "UPI_ID") entType = "BANK_ACCOUNT";
 
-          try {
-            await request(`/api/v1/cases/${createdCaseId}/entities`, {
-              method: "POST",
-              body: JSON.stringify({
-                name: ent.value || ent.name,
-                entity_type: entType || "OTHER",
-                confidence_score: ent.confidence ?? 1.0,
-              }),
-            });
-          } catch {
-            // Non-blocking fallback
-          }
+          await request(`/api/v1/cases/${createdCaseId}/entities`, {
+            method: "POST",
+            body: JSON.stringify({
+              name: ent.value || ent.name,
+              entity_type: entType || "OTHER",
+              confidence_score: ent.confidence ?? 1.0,
+            }),
+          });
         }
       }
 
@@ -250,70 +202,32 @@ export const api = {
   // Dashboard
   dashboard: {
     stats: async () => {
-      try {
-        const data: any = await request("/api/v1/dashboard/stats");
-        return {
-          totalCases: data.totalCases ?? data.total_cases ?? 0,
-          entitiesExtracted: data.entitiesExtracted ?? data.total_entities ?? 0,
-          crossCaseLinks: data.crossCaseLinks ?? data.total_relationships ?? 0,
-          pendingReviews: data.pendingReviews ?? data.pending_reviews ?? 0,
-        };
-      } catch {
-        try {
-          const summary: any = await request("/api/v1/dashboard/summary");
-          return {
-            totalCases: summary.total_cases ?? 0,
-            entitiesExtracted: summary.total_entities ?? 0,
-            crossCaseLinks: summary.total_relationships ?? 0,
-            pendingReviews: 0,
-          };
-        } catch {
-          // Default fallback data so dashboard stats never fail or show "Unable to load"
-          return {
-            totalCases: 2,
-            entitiesExtracted: 5,
-            crossCaseLinks: 2,
-            pendingReviews: 1,
-          };
-        }
-      }
+      const data: any = await request("/api/v1/dashboard/stats");
+      return {
+        totalCases: data.totalCases ?? data.total_cases ?? 0,
+        entitiesExtracted: data.entitiesExtracted ?? data.total_entities ?? 0,
+        crossCaseLinks: data.crossCaseLinks ?? data.total_relationships ?? 0,
+        pendingReviews: data.pendingReviews ?? data.pending_reviews ?? 0,
+      };
     },
   },
 
   // Entities
+  graph: {
+    getCaseGraph: (caseId: string) => request(`/api/v1/cases/${caseId}/graph`),
+  },
+
+  // Entities
   entities: {
-    confirm: async (id: string) => {
-      try {
-        return await request(`/api/v1/entities/${id}/confirm`, { method: "POST" });
-      } catch {
-        return { id, status: "CONFIRMED" };
-      }
-    },
-    reject: async (id: string) => {
-      try {
-        return await request(`/api/v1/entities/${id}/reject`, { method: "POST" });
-      } catch {
-        return { id, status: "REJECTED" };
-      }
-    },
+    confirm: (id: string) => request(`/api/v1/entities/${id}/confirm`, { method: "POST" }),
+    reject: (id: string) => request(`/api/v1/entities/${id}/reject`, { method: "POST" }),
   },
 
   // Auth
   auth: {
     login: async (username: string, password: string) => {
-      const mockAuthResponse = {
-        access_token: "mock-dev-token",
-        token_type: "bearer",
-        user: {
-          id: "dev-user-1",
-          email: username || "investigator@crimelens.ai",
-          role: "Investigator",
-        },
-      };
-
       const emailCandidate = username.includes("@") ? username : `${username}@crimelens.ai`;
       
-      // Try JSON login endpoint first
       try {
         const res: any = await request("/api/v1/auth/login", {
           method: "POST",
@@ -322,51 +236,14 @@ export const api = {
         if (res && (res.access_token || res.token)) {
           return res;
         }
-      } catch {
-        // Try form-encoded login endpoint
-        try {
-          const formData = new URLSearchParams();
-          formData.append("username", username);
-          formData.append("password", password);
-
-          const token = await platform.storage.get(TOKEN_KEY);
-          const headers: Record<string, string> = {
-            "Content-Type": "application/x-www-form-urlencoded",
-          };
-          if (token) {
-            headers["Authorization"] = `Bearer ${token}`;
-          }
-
-          const res = await fetch(`${API_BASE_URL}/api/v1/auth/login/form`, {
-            method: "POST",
-            headers,
-            body: formData.toString(),
-          });
-
-          if (res.ok) {
-            return await res.json();
-          }
-        } catch {
-          // Ignore
-        }
+      } catch (err) {
+        throw err;
       }
-
-      // Fallback dev bypass: return valid mock auth response
-      return mockAuthResponse;
+      
+      throw new Error("Invalid response from server");
     },
 
-    me: async () => {
-      try {
-        return await request("/api/v1/auth/me");
-      } catch {
-        return {
-          id: "user-admin-001",
-          email: "admin@crimelens.ai",
-          full_name: "Chief Investigator Admin",
-          role: "ADMIN",
-        };
-      }
-    },
+    me: async () => request("/api/v1/auth/me"),
 
     setToken: async (token: string) => {
       await platform.storage.set(TOKEN_KEY, token);
@@ -379,41 +256,8 @@ export const api = {
 
   // Ledger / Audit
   ledger: {
-    chain: async (limit = 50, offset = 0) => {
-      try {
-        return await request(`/api/v1/ledger/chain?limit=${limit}&offset=${offset}`);
-      } catch {
-        return [
-          {
-            id: "rec-001-a1b2",
-            timestamp: new Date().toISOString(),
-            action: "CASE_CREATED",
-            actor: "admin@crimelens.ai",
-            resource: "Case: Operation CyberLabyrinth Fraud Ring (CASE-2026-001)",
-            dataHash: "a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef",
-            status: "VERIFIED",
-            verified: true,
-          },
-          {
-            id: "rec-002-c3d4",
-            timestamp: new Date().toISOString(),
-            action: "ENTITY_EXTRACTED",
-            actor: "system_nlp_pipeline",
-            resource: "Entity: Vikram Sharma (PERSON)",
-            dataHash: "890abcdef1234567890abcdef1234567890abcdef1234567890a1b2c3d4e5f6",
-            status: "VERIFIED",
-            verified: true,
-          },
-        ];
-      }
-    },
-    verify: async (recordId: string) => {
-      try {
-        return await request(`/api/v1/ledger/verify/${recordId}`);
-      } catch {
-        return { id: recordId, status: "VERIFIED", verified: true };
-      }
-    },
+    chain: (limit = 50, offset = 0) => request(`/api/v1/ledger/chain?limit=${limit}&offset=${offset}`),
+    verify: (recordId: string) => request(`/api/v1/ledger/verify/${recordId}`),
   },
 };
 
