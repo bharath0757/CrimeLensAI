@@ -6,8 +6,8 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 
-EXTRACTION_URL = os.getenv("EXTRACTION_URL", "http://localhost:8001/api/v1/extract")
-CASE_API_URL = os.getenv("CASE_API_URL", "http://localhost:8000/api/v1")
+EXTRACTION_URL = os.getenv("EXTRACTION_SERVICE_URL", "http://extraction:8001") + "/api/v1/extract"
+CASE_API_URL = os.getenv("API_SERVICE_URL", "http://api:8000") + "/api/v1"
 SECRET_KEY = os.getenv("SECRET_KEY", "CRIMELENS_AI_SECRET_KEY_SUPER_SECURE_STUDENT_SIH_TOKEN_2026")
 ALGORITHM = "HS256"
 
@@ -254,3 +254,4 @@ async def process_transaction(payload: TransactionPayload):
         rel_res.raise_for_status()
         
     return {"status": "created", "transaction_id": payload.transaction_id, "relationship_id": rel_res.json()["id"]}
+

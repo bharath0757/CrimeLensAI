@@ -1,4 +1,6 @@
-﻿from abc import ABC, abstractmethod
+import httpx
+import os
+from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any, Set
 from collections import deque
 
@@ -387,12 +389,12 @@ class HttpGraphService(GraphServiceInterface):
             if r.status_code == 200:
                 data = r.json()
                 return GraphStats(
-                    total_nodes=data["total_nodes"],
-                    total_edges=data["total_edges"],
-                    density=data["density"],
-                    node_types_breakdown=data["node_types_breakdown"],
-                    relationship_types_breakdown=data["relationship_types_breakdown"],
-                    top_connected_entities=[]
+                    total_nodes=data.get("total_nodes", 0),
+                    total_edges=data.get("total_edges", 0),
+                    density=data.get("density", 0.0),
+                    node_types_breakdown=data.get("node_types_breakdown", {}),
+                    relationship_types_breakdown=data.get("relationship_types_breakdown", {}),
+                    top_connected_entities=data.get("top_connected_entities", [])
                 )
             return None
 
@@ -414,7 +416,10 @@ class HttpGraphService(GraphServiceInterface):
                 )
             return None
             
-graph_service_integration = HttpGraphService(base_url="http://127.0.0.1:8002/api/v1")
+graph_service_integration = HttpGraphService(base_url=os.getenv("GRAPH_SERVICE_URL", "http://graph:8002").rstrip("/") + "/api/v1")
+
+
+
 
 
 

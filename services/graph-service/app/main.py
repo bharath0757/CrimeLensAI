@@ -40,6 +40,14 @@ app.add_middleware(
 
 app.include_router(api_router)
 
+@app.on_event("startup")
+async def startup_event():
+    from app.core.database import driver
+    async with driver.session() as session:
+        # Priority 1 constraint for duplicate entity resolution
+        await session.run("CREATE CONSTRAINT entity_identity IF NOT EXISTS FOR (e:Entity) REQUIRE (e.name, e.type) IS UNIQUE")
+        # Ensure Case ID constraint
+        await session.run("CREATE CONSTRAINT case_identity IF NOT EXISTS FOR (c:Case) REQUIRE c.id IS UNIQUE")
 
 @app.get("/health", tags=["Health"])
 async def health_check():

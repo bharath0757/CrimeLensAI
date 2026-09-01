@@ -1,4 +1,4 @@
-﻿from app.core.database import driver
+from app.core.database import driver
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,8 @@ class Neo4jGraphService:
         MERGE (c)-[:HAS_EVIDENCE]->(e)
         """
         async with driver.session() as session:
-            await session.run(query, name=entity["name"].lower(), type=entity["entity_type"], case_id=case_id)
+            result = await session.run(query, name=entity["name"].lower(), type=entity["entity_type"], case_id=case_id)
+            await result.consume()
 
     @staticmethod
     async def create_relationship(case_id: str, rel: dict):
@@ -31,7 +32,7 @@ class Neo4jGraphService:
         RETURN r
         """
         async with driver.session() as session:
-            await session.run(query, 
+            result = await session.run(query, 
                 src_name=rel["source_entity_name"].lower(), src_type=rel["source_entity_type"],
                 tgt_name=rel["target_entity_name"].lower(), tgt_type=rel["target_entity_type"],
                 case_id=case_id,
@@ -39,6 +40,7 @@ class Neo4jGraphService:
                 confidence_score=rel.get("confidence_score", 1.0),
                 description=rel.get("description", "")
             )
+            await result.consume()
 
     @staticmethod
     async def get_linkage(case_id: str):
@@ -103,6 +105,14 @@ class Neo4jGraphService:
         WHERE r.case_id = $case_id
         RETURN type(r) AS rel_type, count(r) AS count
         """
+        query_top = """
+        MATCH (c:Case {id: $case_id})-[:HAS_EVIDENCE]->(e:Entity)
+        MATCH (e)-[r]-(neighbor:Entity)<-[:HAS_EVIDENCE]-(c)
+        WHERE r.case_id = $case_id OR type(r) = 'COMMUNICATED_WITH' OR type(r) = 'TRANSFERRED_FUNDS'
+        RETURN e.uid AS id, e.name AS name, e.type AS type, count(r) AS degree
+        ORDER BY degree DESC
+        LIMIT 5
+        """
         async with driver.session() as session:
             nodes_res = await session.run(query_nodes, case_id=case_id)
             node_count = (await nodes_res.single())["node_count"]
@@ -116,6 +126,9 @@ class Neo4jGraphService:
             rel_types_res = await session.run(query_rel_types, case_id=case_id)
             rel_types = {rec["rel_type"]: rec["count"] async for rec in rel_types_res}
             
+            top_res = await session.run(query_top, case_id=case_id)
+            top_entities = [{"id": rec["id"] or "", "name": rec["name"], "type": rec["type"], "degree": rec["degree"]} async for rec in top_res]
+            
             density = (2 * edge_count) / (node_count * (node_count - 1)) if node_count > 1 else 0.0
             
             return {
@@ -123,7 +136,8 @@ class Neo4jGraphService:
                 "total_edges": edge_count,
                 "density": round(density, 4),
                 "node_types_breakdown": node_types,
-                "relationship_types_breakdown": rel_types
+                "relationship_types_breakdown": rel_types,
+                "top_connected_entities": top_entities
             }
             
     @staticmethod
