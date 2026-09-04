@@ -1,0 +1,129 @@
+/* Light-only operational UI. Color communicates hierarchy, not decoration. */
+:root { color-scheme: light; background: #f4f7fa; color: #172c40; }
+body { margin: 0; }
+button, input, select, textarea { font-family: inherit; }
+button:not(:disabled), summary { cursor: pointer; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 3px solid #3b82b6; outline-offset: 3px; }
+::selection { background: #dceaf6; color: #17334a; }
+.investigator-app { display: flex; min-height: 100dvh; background: #f4f7fa; color: #172c40; font-size: 14px; }
+.brand { display: flex; align-items: center; gap: 10px; color: #18384f; font-weight: 750; font-size: 21px; letter-spacing: -.7px; text-decoration: none; }
+.brand-ai { color: #257c7a; }
+.brand small { display: block; margin-top: 3px; color: #6a7b8c; font-size: 8px; letter-spacing: 1.45px; font-weight: 600; }
+.brand-mark { width: 40px; height: 44px; display: inline-flex; align-items: center; justify-content: center; background: #eaf1f7; border: 1px solid #dce6ef; border-radius: 10px; color: #245b80; flex-shrink: 0; }
+.workspace-sidebar { position: sticky; top: 0; width: 244px; height: 100dvh; display: flex; flex-direction: column; flex-shrink: 0; background: #fff; border-right: 1px solid #dfe6ed; overflow-y: auto; }
+.desktop-brand { padding: 28px 20px 30px; }
+.workspace-sidebar nav { padding: 8px 14px; }
+.nav-section-label { margin: 0 12px 14px; color: #718193; font-size: 10px; font-weight: 650; letter-spacing: 1.8px; }
+.workspace-nav-link { display: flex; align-items: center; gap: 13px; min-height: 46px; margin-bottom: 5px; padding: 11px 14px; border: 1px solid transparent; border-radius: 7px; color: #526779; font-weight: 550; text-decoration: none; transition: background-color 140ms, color 140ms; }
+.workspace-nav-link svg { flex-shrink: 0; }
+.workspace-nav-link:hover { background: #f4f7fa; color: #1b4d73; }
+.workspace-nav-link.is-active { background: #eaf2f9; border-color: #dae7f2; color: #1d527c; font-weight: 650; }
+.nav-active-indicator { width: 5px; height: 5px; border-radius: 50%; margin-left: auto; }
+.is-active .nav-active-indicator { background: #287c8e; }
+.sidebar-guidance { display: flex; gap: 9px; margin: auto 20px 24px; padding-top: 36px; color: #63818b; }
+.sidebar-guidance svg { flex-shrink: 0; margin-top: 3px; }
+.sidebar-guidance strong { display: block; color: #476273; font-size: 11px; font-weight: 650; }
+.sidebar-guidance span { display: block; margin-top: 6px; font-size: 11px; line-height: 1.8; }
+.officer-section { padding: 18px 20px 14px; border-top: 1px solid #e5ebf0; }
+.officer-profile { display: flex; align-items: center; gap: 11px; }
+.officer-profile > div { min-width: 0; }
+.officer-profile p { margin: 0; font-size: 12px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.officer-profile small { display: block; margin-top: 3px; color: #6b7c8c; font-size: 10px; text-transform: capitalize; }
+.officer-avatar { display: grid; place-items: center; flex-shrink: 0; width: 35px; height: 35px; background: #e9f2f1; color: #28695e; border: 1px solid #d7e7e4; border-radius: 9px; font-weight: 650; }
+.sign-out { display: flex; align-items: center; gap: 10px; margin-top: 14px; width: 100%; padding: 8px 0; color: #657788; background: none; border: 0; font-size: 12px; }
+.sign-out:hover { color: #194d76; }
+.workspace-body { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.workspace-topbar { min-height: 69px; padding: 20px 36px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #e0e7ee; background: #fff; font-size: 12px; color: #708093; }
+.workspace-topbar strong { color: #3c5368; font-weight: 550; }
+.breadcrumb-divider { margin: 0 12px; color: #bcc8d1; }
+.workspace-context { font-size: 11px; color: #6e7f90; }
+.workspace-content { width: 100%; max-width: 1600px; padding: 32px 36px 40px; margin: 0 auto; flex: 1; outline: none; }
+.workspace-content h1 { letter-spacing: -.65px; font-size: clamp(23px, 2.2vw, 29px); line-height: 1.25; font-weight: 650; color: #183449; }
+.workspace-content h2, .workspace-content h3 { letter-spacing: -.25px; }
+.workspace-content h1 + p { font-size: 13px; line-height: 1.75; max-width: 75ch; }
+.workspace-content .rounded-xl { border-radius: 10px; }
+.workspace-content .shadow-sm { box-shadow: 0 2px 4px #1b365008; }
+.workspace-content .shadow-md, .workspace-content .shadow-2xl { box-shadow: 0 2px 8px #1b36500a; }
+.workspace-content .bg-clip-text { background-image: none !important; color: #1d4869; }
+.workspace-content [class*="bg-gradient-to-"] { background-image: none; background-color: #fff; }
+.workspace-content .text-3xl { font-variant-numeric: tabular-nums; }
+.workspace-content section[aria-label="Money Flow"] > .text-2xl { font-size: clamp(15px, 1.25vw, 21px); white-space: nowrap; overflow-wrap: normal; overflow-x: auto; color: #176e5b; font-variant-numeric: tabular-nums; }
+.workspace-content section[aria-label="High Risk Cases"] > .text-2xl { color: #985415; }
+.workspace-content section[aria-label="Connection notifications"] > ul { max-height: 430px; overflow-y: auto; scrollbar-gutter: stable; padding-right: 12px; }
+.workspace-content section[aria-label="Transaction activity"] > .overflow-x-auto { max-height: 350px; overflow-y: auto; }
+.workspace-content section[aria-label="Transaction activity"] thead { position: sticky; top: 0; }
+.workspace-content input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), .workspace-content select, .workspace-content textarea { border-color: #cfdbe5; background-color: #fff; border-radius: 7px; }
+.workspace-content input:focus, .workspace-content textarea:focus, .workspace-content select:focus { border-color: #4d8bb9; }
+.workspace-content textarea { line-height: 1.7; }
+.workspace-content input[type="file"] { padding: 16px; border: 1px dashed #bbccd9; border-radius: 8px; background: #f7fafc; }
+.workspace-content table { font-variant-numeric: tabular-nums; }
+.workspace-content thead { background: #f5f8fb; }
+.workspace-content th { color: #5e7286; font-size: 10px; font-weight: 650; }
+.workspace-content td { font-size: 12px; }
+.workspace-content .animate-spin, .workspace-content .animate-pulse, .workspace-content .animate-in { animation: none; }
+.workspace-content [role="status"] { line-height: 1.6; }
+.workspace-footer { display: flex; justify-content: space-between; gap: 12px; padding: 16px 36px; border-top: 1px solid #e0e7ee; color: #788797; font-size: 10px; }
+.mobile-bar { display: none; }
+.skip-link { position: fixed; z-index: 100; top: 8px; left: 12px; padding: 10px 16px; background: #fff; color: #194d76; transform: translateY(-150%); border: 1px solid #b8cfdf; border-radius: 6px; }
+.skip-link:focus { transform: translateY(0); }
+.icon-button { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border: 1px solid #dbe5ed; border-radius: 7px; background: #fff; color: #31536e; }
+
+/* Sign-in is an operational entrance, not a promotional animation. */
+.sign-in-page { min-height: 100dvh; display: grid; grid-template-columns: 1.1fr 1fr; color: #172c40; background: #fff; }
+.sign-in-introduction { display: flex; flex-direction: column; padding: 42px clamp(28px, 5vw, 84px); background: #eef4f8; border-right: 1px solid #dfe8ee; }
+.sign-in-story { margin: auto 0; padding: 65px 0; max-width: 470px; }
+.eyebrow { color: #457584; font-size: 10px; font-weight: 650; letter-spacing: 1.9px; }
+.sign-in-story h1 { margin: 20px 0 22px; font-size: clamp(32px, 3.2vw, 48px); font-weight: 650; letter-spacing: -1.8px; line-height: 1.18; }
+.sign-in-story h1 span { color: #236c7b; }
+.sign-in-description { max-width: 400px; font-size: 14px; line-height: 1.9; color: #5f7587; }
+.sign-in-steps { display: grid; gap: 23px; margin-top: 38px; }
+.sign-in-steps li { display: flex; align-items: flex-start; gap: 15px; }
+.sign-in-steps li > span { border: 1px solid #d3e0e9; color: #587b90; background: #f8fbfd; font-size: 10px; font-weight: 600; width: 30px; height: 30px; display: grid; place-items: center; flex-shrink: 0; border-radius: 6px; }
+.sign-in-steps strong { display: block; margin-top: 1px; font-size: 12px; font-weight: 650; color: #304f64; }
+.sign-in-steps p { margin-top: 4px; color: #688091; font-size: 11px; line-height: 1.6; }
+.sign-in-footnote { font-size: 10px; color: #778c9b; }
+.sign-in-access { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 28px; }
+.sign-in-card { width: 100%; max-width: 360px; }
+.sign-in-symbol { width: 45px; height: 45px; display: grid; place-items: center; border: 1px solid #dce8ef; border-radius: 10px; color: #356e88; background: #f4f8fb; margin-bottom: 26px; }
+.sign-in-card h2 { font-size: 28px; font-weight: 650; letter-spacing: -.9px; margin-top: 10px; }
+.sign-in-card input { min-height: 46px; font-size: 13px; background: #fff; border-color: #cedae4; }
+.sign-in-card label { display: inline-block; margin-bottom: 6px; font-size: 12px; color: #41576a; }
+.sign-in-card button[type="submit"] { min-height: 46px; margin-top: 8px; font-size: 13px; font-weight: 600; background: #205d8d; border-radius: 7px; }
+.sign-in-card button[type="submit"]:hover:not(:disabled) { background: #194d76; }
+.access-notice { display: flex; gap: 9px; padding-top: 23px; margin-top: 26px; border-top: 1px solid #e6ecf1; color: #718393; font-size: 10px; line-height: 1.8; }
+.access-notice svg { flex-shrink: 0; margin-top: 2px; }
+.access-help { max-width: 360px; width: 100%; margin-top: 45px; font-size: 10px; color: #788a99; }
+
+@media (max-width: 1100px) {
+  .workspace-sidebar { width: 220px; }
+  .workspace-content { padding: 28px 24px; }
+  .desktop-brand { padding-inline: 16px; font-size: 19px; }
+  .brand small { font-size: 7px; }
+  .workspace-topbar, .workspace-footer { padding-inline: 24px; }
+}
+@media (max-width: 767px) {
+  .investigator-app { display: block; }
+  .mobile-bar { display: flex; position: sticky; top: 0; z-index: 30; justify-content: space-between; align-items: center; min-height: 66px; padding: 10px 18px; border-bottom: 1px solid #dfe6ed; background: #fff; }
+  .mobile-bar .brand { font-size: 19px; gap: 7px; }
+  .workspace-sidebar { display: none; }
+  .workspace-sidebar.is-open { display: flex; position: fixed; top: 66px; bottom: 0; z-index: 25; width: 100%; height: calc(100dvh - 66px); padding-top: 20px; }
+  .desktop-brand { display: none; }
+  .workspace-content { padding: 24px 18px 32px; }
+  .workspace-topbar { min-height: 48px; padding: 14px 18px; font-size: 11px; }
+  .workspace-context { display: none; }
+  .workspace-footer { padding: 16px 18px; flex-direction: column; gap: 5px; }
+  .workspace-content > div > .flex.items-center.justify-between { flex-wrap: wrap; gap: 16px; }
+  .sign-in-page { display: block; }
+  .sign-in-introduction { padding: 24px; border-right: 0; border-bottom: 1px solid #dfe8ee; }
+  .sign-in-story { padding: 30px 0 0; }
+  .sign-in-story h1 { font-size: 30px; letter-spacing: -1px; margin: 12px 0 16px; }
+  .sign-in-description { font-size: 12px; }
+  .sign-in-steps, .sign-in-footnote { display: none; }
+  .sign-in-access { padding: 32px 24px; }
+  .sign-in-symbol { display: none; }
+  .access-help { margin-top: 26px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

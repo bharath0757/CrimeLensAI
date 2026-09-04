@@ -6,36 +6,50 @@
    ============================================================ */
 
 @import "tailwindcss";
+@import "./styles/investigator.css";
 
 @custom-variant dark (&:is(.dark *));
 
 /* ---- CSS Custom Properties (Design Tokens) ---- */
 @theme {
-  --color-primary-50: #eef2ff;
-  --color-primary-100: #e0e7ff;
-  --color-primary-200: #c7d2fe;
-  --color-primary-300: #a5b4fc;
-  --color-primary-400: #818cf8;
-  --color-primary-500: #6366f1;
-  --color-primary-600: #4f46e5;
-  --color-primary-700: #4338ca;
-  --color-primary-800: #3730a3;
-  --color-primary-900: #312e81;
+  --color-primary-50: #eef5fb;
+  --color-primary-100: #dceaf6;
+  --color-primary-200: #bdd6ec;
+  --color-primary-300: #8eb8db;
+  --color-primary-400: #5593c4;
+  --color-primary-500: #2c72a9;
+  --color-primary-600: #205d8d;
+  --color-primary-700: #194d76;
+  --color-primary-800: #193f5e;
+  --color-primary-900: #17334a;
 
   --color-surface-50: #f8fafc;
   --color-surface-100: #f1f5f9;
   --color-surface-200: #e2e8f0;
+  --color-surface-300: #ccd5df;
+  --color-surface-400: #8b9cac;
+  --color-surface-500: #647587;
+  --color-surface-600: #4c5e70;
   --color-surface-700: #334155;
   --color-surface-800: #1e293b;
   --color-surface-900: #0f172a;
   --color-surface-950: #020617;
 
-  --color-danger-500: #ef4444;
-  --color-danger-600: #dc2626;
-  --color-success-500: #22c55e;
-  --color-success-600: #16a34a;
+  --color-danger-50: #fff3f2;
+  --color-danger-100: #fee4e2;
+  --color-danger-200: #fecaca;
+  --color-danger-500: #d04440;
+  --color-danger-600: #b52e2a;
+  --color-danger-700: #912522;
+  --color-success-50: #edf8f5;
+  --color-success-100: #d9efe8;
+  --color-success-200: #a8d9c9;
+  --color-success-500: #23846d;
+  --color-success-600: #176e5b;
+  --color-success-700: #125846;
   --color-warning-500: #f59e0b;
   --color-warning-600: #d97706;
+  --color-warning-700: #985415;
 
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
