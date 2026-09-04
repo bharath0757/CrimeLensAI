@@ -1,0 +1,12 @@
+{
+  "fictional": true,
+  "purpose": "Deterministic SIH demonstration and regression testing; not based on real people or accusations.",
+  "expected_exact_cross_case_signals": {
+    "UP32AB1234": ["FIR-LKO-001", "FIR-BBK-002", "FIR-AYD-004"],
+    "9876543210": ["FIR-LKO-001", "FIR-STP-003", "FIR-UNN-005"],
+    "safehouse@ybl": ["FIR-BBK-002", "FIR-STP-003", "FIR-AYD-004"]
+  },
+  "expected_bridge_signals": ["UP32AB1234", "9876543210", "safehouse@ybl"],
+  "expected_demo_reveal": "Five district-level missing-person files contain three overlapping operational signals. The software should alert investigators and show the exact FIR/CDR/transaction occurrences behind each connection.",
+  "non_goal": "The dataset must not be used to claim measured accuracy or real-world crime prediction performance."
+}

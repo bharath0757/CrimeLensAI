@@ -141,6 +141,39 @@ export interface GraphData {
   edges: GraphEdge[];
 }
 
+export interface LinkAlert {
+  id: string;
+  case_ids: string[];
+  shared_entity_ids: string[];
+  severity: "LOW" | "MEDIUM" | "HIGH";
+  status: "NEW" | "ACKNOWLEDGED";
+  title: string;
+  explanation: string;
+  created_at: string;
+}
+
+export interface InvestigativePattern {
+  pattern_type:
+    | "REPEATED_IDENTIFIER"
+    | "MULTI_SIGNAL_CONVERGENCE"
+    | "BRIDGE_ENTITY";
+  case_ids: string[];
+  confidence: number;
+  supporting_entity_ids: string[];
+  explanation: string;
+  disposition: "INVESTIGATIVE_LEAD_NOT_FACT";
+}
+
+export interface LinkPrediction {
+  source_entity_id: string;
+  target_entity_id: string;
+  confidence: number;
+  common_neighbor_ids: string[];
+  method: "jaccard_plus_adamic_adar";
+  explanation: string;
+  disposition: "INVESTIGATIVE_LEAD_NOT_FACT";
+}
+
 // ============================================================
 // Ledger Types
 // ============================================================

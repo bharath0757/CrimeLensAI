@@ -1,12 +1,9 @@
-# CrimeLensAI — Extraction Service Dependencies
-# ================================================
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-pydantic>=2.5.0
-spacy>=3.7.0
-rapidfuzz>=3.5.0
-python-dotenv>=1.0.0
-httpx>=0.25.0
-
-# Note: After installing requirements, you MUST download the spacy model:
-# python -m spacy download en_core_web_sm
+# CrimeLensAI extraction service dependencies
+fastapi>=0.104.0,<1.0
+uvicorn[standard]>=0.24.0,<1.0
+pydantic>=2.5.0,<3.0
+spacy>=3.7.0,<4.0
+rapidfuzz>=3.5.0,<4.0
+python-dotenv>=1.0.0,<2.0
+httpx>=0.25.0,<1.0
+pytest>=7.0.0,<9.0

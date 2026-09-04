@@ -1,0 +1,42 @@
+{
+  "description": "Synthetic test data for CrimeLensAI graph service. NOT real personal data.",
+  "cases": {
+    "CASE-001": {
+      "entities": [
+        {"entity_type": "PERSON", "value": "Rajesh Kumar", "normalized_value": "rajesh kumar", "confidence": 0.85},
+        {"entity_type": "PHONE", "value": "+919876543210", "normalized_value": "9876543210", "confidence": 0.99},
+        {"entity_type": "VEHICLE", "value": "AP39AB1234", "normalized_value": "AP39AB1234", "confidence": 0.95},
+        {"entity_type": "UPI_ID", "value": "rajesh@oksbi", "normalized_value": "rajesh@oksbi", "confidence": 0.90}
+      ],
+      "relationships": [
+        {"source_type": "PERSON", "source_value": "Rajesh Kumar", "target_type": "PHONE", "target_value": "+919876543210", "relationship_type": "USES", "confidence": 0.92, "why_linked": "Phone number found in FIR as contact for the named person."},
+        {"source_type": "PERSON", "source_value": "Rajesh Kumar", "target_type": "VEHICLE", "target_value": "AP39AB1234", "relationship_type": "OWNS", "confidence": 0.88, "why_linked": "Vehicle registration linked to named person in FIR."},
+        {"source_type": "PERSON", "source_value": "Rajesh Kumar", "target_type": "UPI_ID", "target_value": "rajesh@oksbi", "relationship_type": "USES", "confidence": 0.85, "why_linked": "UPI ID referenced as payment method used by named person."}
+      ]
+    },
+    "CASE-002": {
+      "entities": [
+        {"entity_type": "PERSON", "value": "Ramesh Kumar", "normalized_value": "ramesh kumar", "confidence": 0.80},
+        {"entity_type": "PHONE", "value": "+919876543210", "normalized_value": "9876543210", "confidence": 0.99},
+        {"entity_type": "VEHICLE", "value": "KA01MG1234", "normalized_value": "KA01MG1234", "confidence": 0.93}
+      ],
+      "relationships": [
+        {"source_type": "PERSON", "source_value": "Ramesh Kumar", "target_type": "PHONE", "target_value": "+919876543210", "relationship_type": "USES", "confidence": 0.90, "why_linked": "Phone number found in CDR records for the named person."},
+        {"source_type": "PERSON", "source_value": "Ramesh Kumar", "target_type": "VEHICLE", "target_value": "KA01MG1234", "relationship_type": "OWNS", "confidence": 0.87, "why_linked": "Vehicle seen near crime scene, registered to named person."}
+      ]
+    },
+    "CASE-003": {
+      "entities": [
+        {"entity_type": "PERSON", "value": "Suresh Reddy", "normalized_value": "suresh reddy", "confidence": 0.82},
+        {"entity_type": "VEHICLE", "value": "AP39AB1234", "normalized_value": "AP39AB1234", "confidence": 0.91}
+      ],
+      "relationships": [
+        {"source_type": "PERSON", "source_value": "Suresh Reddy", "target_type": "VEHICLE", "target_value": "AP39AB1234", "relationship_type": "USES", "confidence": 0.75, "why_linked": "Vehicle seen near crime scene in CASE-003, also registered in CASE-001."}
+      ]
+    }
+  },
+  "expected_cross_case_links": [
+    {"cases": ["CASE-001", "CASE-002"], "shared_entity_type": "PHONE", "shared_value": "+919876543210"},
+    {"cases": ["CASE-001", "CASE-003"], "shared_entity_type": "VEHICLE", "shared_value": "AP39AB1234"}
+  ]
+}
