@@ -1,3 +1,5 @@
+import httpx
+import os
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any, Set
 from collections import deque
@@ -16,6 +18,13 @@ from app.repositories.relationship_repo import relationship_repository, Relation
 
 
 class GraphServiceInterface(ABC):
+    @abstractmethod
+    async def sync_entity(self, case_id: str, entity: Any) -> None:
+        pass
+    
+    @abstractmethod
+    async def sync_relationship(self, case_id: str, rel: Any) -> None:
+        pass
     """Abstract interface contract for Graph & Network Analysis operations."""
 
     @abstractmethod
@@ -62,6 +71,8 @@ class GraphServiceInterface(ABC):
 
 
 class MockGraphService(GraphServiceInterface):
+    async def sync_entity(self, case_id: str, entity: Any) -> None: pass
+    async def sync_relationship(self, case_id: str, rel: Any) -> None: pass
     """
     Graph Service implementation.
     Operates on entities and relationships stored in repositories to compute node-edge graph topologies,
@@ -359,4 +370,78 @@ class MockGraphService(GraphServiceInterface):
         )
 
 
-graph_service_integration = MockGraphService()
+class HttpGraphService(GraphServiceInterface):
+    def __init__(self, base_url: str = "http://graph:8002/api/v1"):
+        self.base_url = base_url
+    
+    async def sync_entity(self, case_id: str, entity: Any) -> None:
+        async with httpx.AsyncClient() as client:
+            await client.post(f"{self.base_url}/entities", json={"case_id": case_id, "entity": {"name": entity.name, "entity_type": entity.entity_type.value}})
+            
+    async def sync_relationship(self, case_id: str, rel: Any) -> None:
+        async with httpx.AsyncClient() as client:
+            src_ent = await entity_repository.get_by_id(rel.source_entity_id)
+            tgt_ent = await entity_repository.get_by_id(rel.target_entity_id)
+            await client.post(f"{self.base_url}/relationships", json={
+                "case_id": case_id, 
+                "relationship": {
+                    "source_entity_name": src_ent.name,
+                    "source_entity_type": src_ent.entity_type.value,
+                    "target_entity_name": tgt_ent.name,
+                    "target_entity_type": tgt_ent.entity_type.value,
+                    "relationship_type": rel.relationship_type.value,
+                    "properties": rel.properties,
+                    "confidence_score": rel.confidence_score,
+                    "description": rel.description
+                }
+            })
+
+    async def get_case_graph(self, case_id: str) -> GraphResponse:
+        pass # Not required for Neo4j tests unless specified
+
+    async def get_entity_connections(self, entity_id: str) -> Optional[EntityConnectionsResponse]:
+        pass
+
+    async def get_entity_neighbors(self, entity_id: str, depth: int = 1) -> Optional[EntityNeighborsResponse]:
+        pass
+
+    async def get_graph_stats(self, case_id: str) -> GraphStats:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(f"{self.base_url}/stats/{case_id}")
+            if r.status_code == 200:
+                data = r.json()
+                return GraphStats(
+                    total_nodes=data.get("total_nodes", 0),
+                    total_edges=data.get("total_edges", 0),
+                    density=data.get("density", 0.0),
+                    node_types_breakdown=data.get("node_types_breakdown", {}),
+                    relationship_types_breakdown=data.get("relationship_types_breakdown", {}),
+                    top_connected_entities=data.get("top_connected_entities", [])
+                )
+            return None
+
+    async def get_shortest_path(self, source_entity_id: str, target_entity_id: str) -> ShortestPathResponse:
+        src_ent = await entity_repository.get_by_id(source_entity_id)
+        tgt_ent = await entity_repository.get_by_id(target_entity_id)
+        async with httpx.AsyncClient() as client:
+            r = await client.get(f"{self.base_url}/shortest-path", params={"entity_a": src_ent.name, "entity_b": tgt_ent.name})
+            if r.status_code == 200:
+                data = r.json()
+                return ShortestPathResponse(
+                    source_entity_id=source_entity_id,
+                    target_entity_id=target_entity_id,
+                    path_found=data["path_found"],
+                    hop_count=len(data.get("path_edges", [])),
+                    nodes=[],
+                    edges=[],
+                    message=data.get("explanation", "")
+                )
+            return None
+            
+graph_service_integration = HttpGraphService(base_url=os.getenv("GRAPH_SERVICE_URL", "http://graph:8002").rstrip("/") + "/api/v1")
+
+
+
+
+
+

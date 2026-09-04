@@ -43,6 +43,11 @@ async def create_relationship(
 
     relationship = await rel_repo.create(case_id, rel_create)
     await case_repo.update_counts(case_id, rel_delta=1)
+    from app.integrations.graph_integration import graph_service_integration
+    try:
+        await graph_service_integration.sync_relationship(case_id, relationship)
+    except Exception as e:
+        import logging; logging.error(f'Graph sync failed: {e}')
     return relationship
 
 
