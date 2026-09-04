@@ -48,7 +48,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .workspace-content .bg-clip-text { background-image: none !important; color: #1d4869; }
 .workspace-content [class*="bg-gradient-to-"] { background-image: none; background-color: #fff; }
 .workspace-content .text-3xl { font-variant-numeric: tabular-nums; }
-.workspace-content section[aria-label="Money Flow"] > .text-2xl { font-size: clamp(15px, 1.25vw, 21px); white-space: nowrap; overflow-wrap: normal; overflow-x: auto; color: #176e5b; font-variant-numeric: tabular-nums; }
+.workspace-content section[aria-label="Money Flow"] > .text-2xl { font-size: clamp(15px, 1.1vw, 18px); white-space: nowrap; overflow-wrap: normal; overflow-x: auto; color: #176e5b; font-variant-numeric: tabular-nums; }
 .workspace-content section[aria-label="High Risk Cases"] > .text-2xl { color: #985415; }
 .workspace-content section[aria-label="Connection notifications"] > ul { max-height: 430px; overflow-y: auto; scrollbar-gutter: stable; padding-right: 12px; }
 .workspace-content section[aria-label="Transaction activity"] > .overflow-x-auto { max-height: 350px; overflow-y: auto; }
