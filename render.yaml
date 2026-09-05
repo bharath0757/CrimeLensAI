@@ -101,7 +101,7 @@ services:
     autoDeployTrigger: checksPass
     preDeployCommand: python /bootstrap/bootstrap.py
     healthCheckPath: /health
-    maxShutdownDelaySeconds: 60
+    
     disk:
       name: uploads
       mountPath: /data
