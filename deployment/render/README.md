@@ -17,9 +17,18 @@ Render prompts for these values on the first Blueprint creation:
   credentials. Use an encrypted `neo4j+s://` URI when the provider supports it.
 
 The Blueprint generates the JWT, service-to-service, API database-role, and
-ledger database-role secrets. The Case API pre-deploy command applies migrations,
-creates the least-privileged runtime roles, and bootstraps the administrator.
-Synthetic demo data is deliberately disabled in production.
+ledger database-role secrets. On paid Render services, the Case API pre-deploy
+command applies migrations before release. The Docker start command repeats the
+same idempotent bootstrap before starting Uvicorn, so first deployment also
+works on plans that do not support pre-deploy commands and when the service was
+created manually. The ledger waits for all three migration versions and its
+least-privileged database role before starting. Synthetic demo data is
+deliberately disabled in production.
+
+The migration process needs `MIGRATION_DATABASE_URL` from the Render PostgreSQL
+`connectionString`. Do not replace it with the API runtime-role URL. Successful
+logs include `Schema migrations and deployment bootstrap completed
+successfully`; the API must not be marked healthy before that message appears.
 
 ## Vercel frontend
 

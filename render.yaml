@@ -70,6 +70,8 @@ services:
         value: production
       - key: LEDGER_AUTO_MIGRATE
         value: "false"
+      - key: SCHEMA_WAIT_TIMEOUT_SECONDS
+        value: "300"
       - key: MIGRATION_DATABASE_URL
         fromDatabase:
           name: crimelens-postgres
@@ -101,7 +103,7 @@ services:
     autoDeployTrigger: checksPass
     preDeployCommand: python /bootstrap/bootstrap.py
     healthCheckPath: /health
-    
+
     disk:
       name: uploads
       mountPath: /data

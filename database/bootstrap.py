@@ -6,6 +6,13 @@ import subprocess
 
 import bcrypt
 import psycopg2
+from psycopg2.extensions import parse_dsn
+
+EXPECTED_MIGRATIONS = {
+    "001_audit_outbox",
+    "002_structured_ingestion",
+    "003_runtime_roles",
+}
 
 
 def required(name: str) -> str:
@@ -22,12 +29,47 @@ def validate_password(name: str) -> str:
     return value
 
 
-def run_psql(path: str, *variables: str) -> None:
-    command = ["psql", "--no-psqlrc", "--set", "ON_ERROR_STOP=1"]
+def psql_environment(database_url: str) -> dict[str, str]:
+    """Give psql the same database used by psycopg2 without exposing its URL."""
+    environment = os.environ.copy()
+    if not database_url:
+        return environment
+    parameters = parse_dsn(database_url)
+    mapping = {
+        "host": "PGHOST",
+        "hostaddr": "PGHOSTADDR",
+        "port": "PGPORT",
+        "dbname": "PGDATABASE",
+        "user": "PGUSER",
+        "password": "PGPASSWORD",
+        "sslmode": "PGSSLMODE",
+        "options": "PGOPTIONS",
+    }
+    for source, target in mapping.items():
+        if parameters.get(source):
+            environment[target] = parameters[source]
+    environment.setdefault("PGCONNECT_TIMEOUT", "15")
+    return environment
+
+
+def run_psql(path: str, database_url: str, *variables: str) -> None:
+    command = ["psql", "--no-psqlrc", "--echo-errors", "--set", "ON_ERROR_STOP=1"]
     for variable in variables:
         command.extend(["--set", variable])
     command.extend(["--file", path])
-    subprocess.run(command, check=True)
+    subprocess.run(command, check=True, env=psql_environment(database_url))
+
+
+def verify_schema(connection) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT to_regclass('public.schema_migrations')")
+        if cursor.fetchone()[0] is None:
+            raise RuntimeError("Migration failed: public.schema_migrations was not created")
+        cursor.execute("SELECT version FROM public.schema_migrations")
+        applied = {row[0] for row in cursor.fetchall()}
+    missing = EXPECTED_MIGRATIONS - applied
+    if missing:
+        raise RuntimeError(f"Migration failed: missing versions {sorted(missing)}")
 
 
 def configure_accounts(connection, admin_email: str, admin_password: str) -> None:
@@ -67,15 +109,21 @@ def main() -> None:
     seed = os.getenv("SEED_SYNTHETIC", "false").lower() == "true"
     if seed and os.getenv("ALLOW_DEMO_SEED", "false").lower() != "true":
         raise RuntimeError("Synthetic demo seeding also requires ALLOW_DEMO_SEED=true")
-    connection = psycopg2.connect(os.getenv("MIGRATION_DATABASE_URL", ""))
+    migration_url = os.getenv("MIGRATION_DATABASE_URL", "").strip()
+    connection = psycopg2.connect(migration_url)
     connection.autocommit = True
     try:
         with connection.cursor() as cursor:
             cursor.execute("SELECT pg_advisory_lock(26189,42)")
-        run_psql("/database/bootstrap.sql", "seed_synthetic=false")
+            cursor.execute("SELECT current_database()")
+            database_name = cursor.fetchone()[0]
+        print(f"Connected to PostgreSQL database {database_name}; applying schema migrations", flush=True)
+        run_psql("/database/bootstrap.sql", migration_url, "seed_synthetic=false")
+        verify_schema(connection)
         configure_accounts(connection, admin_email, admin_password)
         if seed:
-            run_psql("/database/seed.sql")
+            run_psql("/database/seed.sql", migration_url)
+        print("Schema migrations and deployment bootstrap completed successfully", flush=True)
         with connection.cursor() as cursor:
             cursor.execute("SELECT pg_advisory_unlock(26189,42)")
     finally:

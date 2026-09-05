@@ -21,4 +21,4 @@ RUN useradd --create-home --uid 10001 crimelens \
 USER crimelens
 
 EXPOSE 10000
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]
+CMD ["sh", "-c", "python /bootstrap/bootstrap.py && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]

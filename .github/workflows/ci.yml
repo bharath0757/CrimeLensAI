@@ -75,6 +75,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build and start clean stack
         run: docker compose -p crimelens-ci up -d --build --wait
+      - name: Verify Render migration URL bootstrap
+        run: |
+          docker build -f deployment/render/case-api.Dockerfile -t crimelens-render-api-test .
+          docker run --rm --network crimelens-ci_default \
+            -e MIGRATION_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB} \
+            -e API_DATABASE_PASSWORD=${API_DATABASE_PASSWORD} \
+            -e LEDGER_DATABASE_PASSWORD=${LEDGER_DATABASE_PASSWORD} \
+            -e BOOTSTRAP_ADMIN_EMAIL=${BOOTSTRAP_ADMIN_EMAIL} \
+            -e BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD} \
+            -e SEED_SYNTHETIC=false \
+            -e ALLOW_DEMO_SEED=false \
+            crimelens-render-api-test python /bootstrap/bootstrap.py
       - name: Run real PostgreSQL integration suites
         run: |
           docker build --target test -t crimelens-case-integration-test services/case-api
