@@ -110,6 +110,11 @@ The first administrator is created from `BOOTSTRAP_ADMIN_EMAIL` and
 demo, set both `SEED_SYNTHETIC=true` and `ALLOW_DEMO_SEED=true`; this loads the
 deterministic 1,000-FIR, 20,000-CDR, and 20,000-transaction corpus.
 
+Ready-to-upload presentation FIRs and the recommended judge-demo sequence are
+available in [`data/demo/firs/`](data/demo/firs/README.md). The five reports are
+fully synthetic and include four deliberately connected cases plus one
+unrelated control case.
+
 ### Production deployment
 
 - Import `render.yaml` as a Render Blueprint for PostgreSQL and all backend
