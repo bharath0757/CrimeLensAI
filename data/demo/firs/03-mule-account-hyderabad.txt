@@ -6,7 +6,6 @@ Police station: Hyderabad Cyber Crime Police Station
 
 Complainant Priya Nair reported that a remote-work recruiter contacted her in Hyderabad and directed her to receive and forward small payments. Suspect Imran Qureshi used phone number 9876502618 and UPI ID mule26189@ybl. He represented that he worked for North Star Trading.
 
-The complainant was instructed to send funds to bank account number 123456789012. The onboarding message also displayed PAN AAAAA0000A and email accounts@northstar.example. Three transfers totalling INR 76,000 were requested before the complainant approached police. The facts may attract Section 420 IPC and require independent verification.
+The complainant was instructed to send funds to bank account number 123456789012. The onboarding message also displayed PAN AAAAA0000A and email accounts@northstar.example. Three transfers totalling 76,000 rupees were requested before the complainant approached police. The facts may attract Section 420 IPC and require independent verification.
 
 All names, identifiers and events in this file are fabricated exclusively for the CrimeLensAI presentation.
-

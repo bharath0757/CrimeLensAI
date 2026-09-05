@@ -4,6 +4,11 @@ These reports are entirely synthetic. They are designed to demonstrate how
 CrimeLensAI discovers a network that is not obvious when each FIR is reviewed
 independently. Upload the files in numerical order as separate cases.
 
+Polished, text-based PDF versions can be regenerated with
+`python scripts/generate_demo_fir_pdfs.py`. They are written to
+`output/pdf/demo-firs/` and preserve the same evidence identifiers without
+adding shared branding that could create false-positive links.
+
 ## Recommended demo order
 
 | File | Suggested case number | Category | What it contributes |
@@ -38,4 +43,3 @@ and finds that the same phone, payment handle and vehicle recur across police
 stations. A later warehouse report bridges the payment and call clusters. The
 system alerts the officer and explains every link, while the original FIR
 remains the source of truth and every action is recorded in the audit ledger.”
-

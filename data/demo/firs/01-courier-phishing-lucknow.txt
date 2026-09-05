@@ -4,9 +4,8 @@ FIR number: DEMO-FIR-001
 Date: 01 September 2026
 Police station: Hazratganj Cyber Crime Police Station
 
-Complainant Kavita Rao reported that she received a telephone call in Lucknow from a person claiming to represent a courier company. The caller used phone number 9000990189 and stated that a parcel would be released after a verification payment. The caller instructed the complainant to transfer INR 18,500 to UPI ID demohub26189@upi.
+Complainant Kavita Rao reported that she received a telephone call in Lucknow from a person claiming to represent a courier company. The caller used phone number 9000990189 and stated that a parcel would be released after a verification payment. The caller instructed the complainant to transfer 18,500 rupees to UPI ID demohub26189@upi.
 
-After the payment, the caller stopped responding. CCTV near the stated collection point showed vehicle UP 32 AB 2618 leaving the area. The complainant supplied screenshots of the payment request and call history. The incident may attract Section 420 IPC and Section 66D of the Information Technology Act.
+After the payment, the caller stopped responding. A security-camera recording near the stated collection point showed vehicle UP 32 AB 2618 leaving the area. The complainant supplied screenshots of the payment request and call history. The incident may attract Section 420 IPC and Section 66D of the Information Technology Act.
 
 All names, identifiers and events in this file are fabricated exclusively for the CrimeLensAI presentation.
-
