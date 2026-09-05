@@ -4,6 +4,7 @@ import os
 import time
 
 import psycopg2
+from sqlalchemy.engine import make_url
 
 EXPECTED_MIGRATIONS = {
     "001_audit_outbox",
@@ -12,9 +13,18 @@ EXPECTED_MIGRATIONS = {
 }
 
 
+def psycopg_database_url(database_url: str) -> str:
+    """Normalize SQLAlchemy PostgreSQL URLs for psycopg2.connect()."""
+    parsed = make_url(database_url)
+    if not parsed.drivername.startswith("postgresql"):
+        raise ValueError("Database URL must use PostgreSQL")
+    return parsed.set(drivername="postgresql").render_as_string(hide_password=False)
+
+
 def schema_ready(database_url: str) -> bool:
     try:
-        with psycopg2.connect(database_url, connect_timeout=5) as connection, connection.cursor() as cursor:
+        connect_url = psycopg_database_url(database_url)
+        with psycopg2.connect(connect_url, connect_timeout=5) as connection, connection.cursor() as cursor:
             cursor.execute("SELECT to_regclass('public.schema_migrations')")
             if cursor.fetchone()[0] is None:
                 return False
@@ -23,7 +33,7 @@ def schema_ready(database_url: str) -> bool:
             cursor.execute("SELECT 1 FROM pg_roles WHERE rolname='crimelens_ledger'")
             ledger_role_exists = cursor.fetchone() is not None
         return EXPECTED_MIGRATIONS.issubset(applied) and ledger_role_exists
-    except psycopg2.Error:
+    except (psycopg2.Error, ValueError):
         return False
 
 
