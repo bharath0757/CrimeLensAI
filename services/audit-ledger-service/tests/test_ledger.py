@@ -5,13 +5,13 @@ from itertools import pairwise
 from uuid import uuid4
 
 import pytest
+from app.config import Settings
+from app.models import AppendRequest
+from app.store import ChainCorrupted, LedgerStore, entries
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import DatabaseError
 
-from app.config import Settings
 from app.main import create_app
-from app.models import AppendRequest
-from app.store import ChainCorrupted, LedgerStore, entries
 
 TOKEN = "test-service-token-only-" + "a" * 40
 AUTH = {"X-Service-Token": TOKEN}

@@ -1,5 +1,4 @@
 import pytest
-
 from app.wait_for_schema import psycopg_database_url
 
 
