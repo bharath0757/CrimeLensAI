@@ -1,10 +1,11 @@
-from enum import Enum
-from typing import List, Optional, Dict, Any
 from datetime import datetime
+from enum import StrEnum
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict
 
 
-class ProcessingStatus(str, Enum):
+class ProcessingStatus(StrEnum):
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
     COMPLETED = "COMPLETED"
@@ -18,21 +19,21 @@ class DocumentResponse(BaseModel):
     original_filename: str
     file_type: str
     file_size_bytes: int
-    file_path: Optional[str] = None
+    file_path: str | None = None
     processing_status: ProcessingStatus
     extracted_entity_count: int = 0
     extracted_relationship_count: int = 0
     uploaded_by: str
     created_at: datetime
     updated_at: datetime
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class DocumentListResponse(BaseModel):
     total: int
-    items: List[DocumentResponse]
+    items: list[DocumentResponse]
 
 
 class DocumentProcessingStatusResponse(BaseModel):
@@ -43,4 +44,4 @@ class DocumentProcessingStatusResponse(BaseModel):
     extracted_entity_count: int = 0
     extracted_relationship_count: int = 0
     message: str = "Status retrieved"
-    details: Optional[Dict[str, Any]] = None
+    details: dict[str, Any] | None = None

@@ -15,8 +15,19 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Download spaCy English model
 RUN python -m spacy download en_core_web_sm
 
-COPY . .
+COPY app ./app
+RUN find app -type f -name '*.py' -exec chmod 644 {} +
+
+FROM base AS test
+RUN pip install --no-cache-dir pytest ruff
+COPY tests ./tests
+RUN find tests -type f -name '*.py' -exec chmod 644 {} +
+CMD ["python", "-m", "pytest", "-q"]
+
+FROM base AS production
+RUN useradd --create-home --uid 10001 crimelens
+USER crimelens
 
 EXPOSE 8001
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8001}"]

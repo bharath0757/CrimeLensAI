@@ -38,7 +38,7 @@ def test_upload_document_invalid_extension(client, admin_auth_headers):
     assert "Unsupported file format" in response.json()["detail"]
 
 
-def test_trigger_document_ai_processing(client, admin_auth_headers):
+def test_processing_rejects_fake_pdf(client, admin_auth_headers):
     cases_resp = client.get("/api/v1/cases", headers=admin_auth_headers)
     case_id = cases_resp.json()["items"][0]["id"]
 
@@ -53,8 +53,8 @@ def test_trigger_document_ai_processing(client, admin_auth_headers):
         f"/api/v1/documents/{doc_id}/process",
         headers=admin_auth_headers,
     )
-    assert proc_resp.status_code == 200
-    assert proc_resp.json()["success"] is True
+    assert proc_resp.status_code == 422
+    assert "PDF could not be read" in proc_resp.json()["detail"]
 
     status_resp = client.get(
         f"/api/v1/documents/{doc_id}/processing-status",
@@ -62,3 +62,4 @@ def test_trigger_document_ai_processing(client, admin_auth_headers):
     )
     assert status_resp.status_code == 200
     assert status_resp.json()["document_id"] == doc_id
+    assert status_resp.json()["processing_status"] == "FAILED"

@@ -1,0 +1,134 @@
+name: CrimeLensAI CI
+
+on:
+  push:
+    branches: [main, develop, "codex/**", "feature/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  data-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/validate_synthetic_data.mjs
+      - run: docker build --target test -t crimelens-case-test services/case-api
+      - run: docker run --rm -v "$PWD:/repo:ro" crimelens-case-test ruff check --config /repo/ruff.toml /repo/services /repo/database /repo/scripts
+
+  service-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - audit-ledger-service
+          - case-api
+          - entity-extraction-service
+          - graph-service
+          - ingestion-service
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --target test -t "crimelens-${{ matrix.service }}-test" "services/${{ matrix.service }}"
+      - run: docker run --rm "crimelens-${{ matrix.service }}-test"
+
+  compose-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      POSTGRES_USER: crimelens_owner
+      POSTGRES_PASSWORD: ci_owner_password_26189_secure
+      POSTGRES_DB: crimelens_verify
+      API_DATABASE_PASSWORD: ci_api_password_26189_secure_0001
+      LEDGER_DATABASE_PASSWORD: ci_ledger_password_26189_secure_01
+      NEO4J_PASSWORD: ci_neo4j_password_26189
+      SECRET_KEY: ci_jwt_secret_26189_secure_000000000000000000000000
+      SERVICE_AUTH_TOKEN: ci_service_token_26189_secure_0000000000000000000000
+      BOOTSTRAP_ADMIN_EMAIL: admin@ci.crimelens.invalid
+      BOOTSTRAP_ADMIN_PASSWORD: CI-demo-password-26189
+      SEED_SYNTHETIC: "true"
+      ALLOW_DEMO_SEED: "true"
+      ALLOWED_ORIGINS: '["http://127.0.0.1:5173"]'
+      API_PORT: "8000"
+      WEB_PORT: "5173"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start clean stack
+        run: docker compose -p crimelens-ci up -d --build --wait
+      - name: Run real PostgreSQL integration suites
+        run: |
+          docker build --target test -t crimelens-case-integration-test services/case-api
+          docker run --rm --network crimelens-ci_default -v "$PWD/database:/database:ro" \
+            -e CASE_API_TEST_POSTGRES_URL=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/crimelens_verify \
+            -e CASE_API_TEST_LEDGER_URL=http://ledger:8003 \
+            -e CASE_API_TEST_LEDGER_TOKEN=${SERVICE_AUTH_TOKEN} \
+            -e SERVICE_AUTH_TOKEN=${SERVICE_AUTH_TOKEN} \
+            crimelens-case-integration-test
+          docker build --target test -t crimelens-ledger-integration-test services/audit-ledger-service
+          docker run --rm --network crimelens-ci_default \
+            -e LEDGER_TEST_POSTGRES_URL=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/crimelens_verify \
+            crimelens-ledger-integration-test
+      - name: Verify real FIR, structured evidence, and audit workflows
+        run: |
+          docker compose -p crimelens-ci exec -T api mkdir -p /tmp/verification
+          docker compose -p crimelens-ci cp scripts/. api:/tmp/verification/
+          docker compose -p crimelens-ci exec -T \
+            -e DATABASE_URL=postgresql+psycopg2://crimelens_api:${API_DATABASE_PASSWORD}@postgres:5432/crimelens_verify \
+            -e VERIFICATION_SCOPE=isolated-synthetic \
+            -e FIR_SMOKE_EXPECTED_DATABASE=crimelens_verify \
+            -e FIR_SMOKE_API_URL=http://127.0.0.1:8000 \
+            -e GRAPH_SERVICE_URL=http://graph:8002 \
+            -e FIR_SMOKE_NEO4J_HTTP_URL=http://neo4j:7474 \
+            -e FIR_SMOKE_NEO4J_PASSWORD=${NEO4J_PASSWORD} \
+            -e FIR_SMOKE_EMAIL=${BOOTSTRAP_ADMIN_EMAIL} \
+            -e FIR_SMOKE_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD} \
+            api python /tmp/verification/verify_fir_workflow.py
+          docker compose -p crimelens-ci exec -T \
+            -e DATABASE_URL=postgresql+psycopg2://crimelens_api:${API_DATABASE_PASSWORD}@postgres:5432/crimelens_verify \
+            -e VERIFICATION_SCOPE=isolated-synthetic \
+            -e FIR_SMOKE_EXPECTED_DATABASE=crimelens_verify \
+            -e FIR_SMOKE_EMAIL=${BOOTSTRAP_ADMIN_EMAIL} \
+            -e FIR_SMOKE_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD} \
+            -e FIR_SMOKE_NEO4J_HTTP_URL=http://neo4j:7474 \
+            -e FIR_SMOKE_NEO4J_PASSWORD=${NEO4J_PASSWORD} \
+            api python /tmp/verification/verify_structured_workflow.py
+          docker compose -p crimelens-ci exec -T \
+            -e VERIFICATION_SCOPE=isolated-synthetic \
+            -e DATABASE_URL=postgresql+psycopg2://crimelens_api:${API_DATABASE_PASSWORD}@postgres:5432/crimelens_verify \
+            -e FIR_SMOKE_EMAIL=${BOOTSTRAP_ADMIN_EMAIL} \
+            -e FIR_SMOKE_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD} \
+            -e FIR_SMOKE_NEO4J_HTTP_URL=http://neo4j:7474 \
+            -e FIR_SMOKE_NEO4J_PASSWORD=${NEO4J_PASSWORD} \
+            api python /tmp/verification/verify_domain_graph.py
+          docker compose -p crimelens-ci exec -T \
+            -e VERIFICATION_SCOPE=isolated-synthetic \
+            -e DATABASE_URL=postgresql+psycopg2://crimelens_api:${API_DATABASE_PASSWORD}@postgres:5432/crimelens_verify \
+            -e AUDIT_SMOKE_EMAIL=${BOOTSTRAP_ADMIN_EMAIL} \
+            -e AUDIT_SMOKE_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD} \
+            api python /tmp/verification/verify_audit_workflow.py http://127.0.0.1:8000
+      - name: Collect logs on failure
+        if: failure()
+        run: docker compose -p crimelens-ci logs --no-color
+      - name: Stop isolated stack
+        if: always()
+        run: docker compose -p crimelens-ci down -v --remove-orphans

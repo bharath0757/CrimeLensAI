@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
+import { InterfaceIcon } from "../components/InterfaceIcon";
 
 export function Login() {
   const [username, setUsername] = useState("");
@@ -22,10 +23,9 @@ export function Login() {
     setIsSubmitting(true);
 
     try {
-      const response: any = await api.auth.login(username, password);
+      const response = await api.auth.login(username, password);
       
-      // The API should ideally return an access_token. We adapt based on common JWT formats.
-      const token = response.access_token || response.token;
+      const token = response.access_token;
       
       if (!token) {
         throw new Error("Invalid authentication response format");
@@ -56,19 +56,34 @@ export function Login() {
   };
 
   return (
-    <div className="flex h-screen items-center justify-center bg-surface-50 dark:bg-surface-950 text-surface-900 dark:text-white p-4 transition-colors">
-      <div className="w-full max-w-md bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl p-8 shadow-2xl transition-colors">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-600 to-primary-700 dark:from-primary-400 dark:to-primary-600 bg-clip-text text-transparent transition-colors">
-            CrimeLensAI
-          </h1>
-          <p className="text-sm text-surface-600 dark:text-surface-300 mt-2 transition-colors">Sign in to your investigator account</p>
+    <div className="sign-in-page">
+      <section className="sign-in-introduction" aria-label="About CrimeLensAI">
+        <div className="brand"><span className="brand-mark"><InterfaceIcon name="shield" size={26} /></span><span>CrimeLens<span className="brand-ai">AI</span></span></div>
+        <div className="sign-in-story">
+          <p className="eyebrow">INVESTIGATION INTELLIGENCE</p>
+          <h1>Separate cases.<br /><span>A clearer picture.</span></h1>
+          <p className="sign-in-description">Connect evidence across investigations. Follow the relationships that matter, with the source always in view.</p>
+          <ol className="sign-in-steps">
+            <li><span>01</span><div><strong>Bring evidence together</strong><p>FIRs, entities and case records in one workspace.</p></div></li>
+            <li><span>02</span><div><strong>Examine the connections</strong><p>Explore shared identifiers and linked cases.</p></div></li>
+            <li><span>03</span><div><strong>Review with accountability</strong><p>Trace the source. Verify the audit trail.</p></div></li>
+          </ol>
+        </div>
+        <p className="sign-in-footnote">Built to support officer judgment, not replace it.</p>
+      </section>
+      <section className="sign-in-access">
+      <div className="sign-in-card">
+        <div className="mb-8">
+          <span className="sign-in-symbol"><InterfaceIcon name="shield" size={24} /></span>
+          <p className="eyebrow">OFFICER ACCESS</p>
+          <h2>Welcome back</h2>
+          <p className="text-sm text-surface-600 mt-2">Sign in to your investigator account</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {error && (
-            <div className="bg-danger-50 text-danger-700 border border-danger-200 dark:bg-danger-500/10 dark:border-danger-500/20 dark:text-danger-500 p-3 rounded-lg text-sm font-medium transition-colors">
-              ⚠️ {typeof error === 'string' ? error : ((error as any)?.detail?.[0]?.msg || (error as any)?.detail || 'Invalid login credentials')}
+            <div role="alert" className="bg-danger-50 text-danger-700 border border-danger-200 p-3 rounded-lg text-sm font-medium">
+              {typeof error === 'string' ? error : ((error as any)?.detail?.[0]?.msg || (error as any)?.detail || 'Invalid login credentials')}
             </div>
           )}
 
@@ -78,6 +93,7 @@ export function Login() {
             </label>
             <input
               id="username"
+              autoComplete="username"
               type="text"
               required
               value={username}
@@ -93,6 +109,7 @@ export function Login() {
             </label>
             <input
               id="password"
+              autoComplete="current-password"
               type="password"
               required
               value={password}
@@ -110,7 +127,10 @@ export function Login() {
             {isSubmitting ? "Signing in..." : "Sign In"}
           </button>
         </form>
+        <p className="access-notice"><InterfaceIcon name="shield" size={16} /><span>For authorized personnel. Handle case information according to your department’s policies.</span></p>
       </div>
+      <p className="access-help">Need access? Contact your system administrator.</p>
+      </section>
     </div>
   );
 }

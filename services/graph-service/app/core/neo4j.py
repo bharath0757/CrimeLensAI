@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from neo4j import GraphDatabase, Driver
-from neo4j.exceptions import ServiceUnavailable, AuthError
+from neo4j import Driver, GraphDatabase
+from neo4j.exceptions import AuthError, ServiceUnavailable
 
 from app.core.config import get_settings
 
@@ -64,7 +64,7 @@ class Neo4jConnectionManager:
         try:
             self.driver.verify_connectivity()
             return True
-        except Exception:
+        except Exception:  # noqa: BLE001 - a health probe must convert any driver failure to False
             return False
 
     def execute_query(
@@ -78,21 +78,26 @@ class Neo4jConnectionManager:
     def _ensure_constraints(self) -> None:
         """Create uniqueness constraints and indexes on startup."""
         queries = [
-            "CREATE CONSTRAINT case_id_unique IF NOT EXISTS "
-            "FOR (c:Case) REQUIRE c.case_id IS UNIQUE",
-            "CREATE CONSTRAINT entity_id_unique IF NOT EXISTS "
-            "FOR (e:Entity) REQUIRE e.id IS UNIQUE",
-            "CREATE CONSTRAINT alert_id_unique IF NOT EXISTS "
-            "FOR (a:LinkAlert) REQUIRE a.id IS UNIQUE",
-            "CREATE INDEX entity_canonical_lookup IF NOT EXISTS "
-            "FOR (e:Entity) ON (e.entity_type, e.canonical_value)",
+            (
+                "CREATE CONSTRAINT case_id_unique IF NOT EXISTS "
+                "FOR (c:Case) REQUIRE c.case_id IS UNIQUE"
+            ),
+            (
+                "CREATE CONSTRAINT entity_id_unique IF NOT EXISTS "
+                "FOR (e:Entity) REQUIRE e.id IS UNIQUE"
+            ),
+            (
+                "CREATE CONSTRAINT alert_id_unique IF NOT EXISTS "
+                "FOR (a:LinkAlert) REQUIRE a.id IS UNIQUE"
+            ),
+            (
+                "CREATE INDEX entity_canonical_lookup IF NOT EXISTS "
+                "FOR (e:Entity) ON (e.entity_type, e.canonical_value)"
+            ),
         ]
         with self.driver.session() as session:
             for q in queries:
-                try:
-                    session.run(q)
-                except Exception as exc:
-                    logger.warning("Constraint creation warning: %s", exc)
+                session.run(q).consume()
         logger.info("Neo4j constraints ensured")
 
 

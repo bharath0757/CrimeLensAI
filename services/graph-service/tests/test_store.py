@@ -1,8 +1,11 @@
-import json
-from pathlib import Path
-
 from app.analysis import FirAnalysisService
-from app.models import EntityInput, EntityType, FirAnalysisRequest, RawFirInput, RelationshipInput
+from app.models import (
+    EntityInput,
+    EntityType,
+    FirAnalysisRequest,
+    RawFirInput,
+    RelationshipInput,
+)
 from app.store import InMemoryGraphStore
 
 
@@ -57,20 +60,23 @@ def test_shortest_path_keeps_relationship_explanation():
 
 
 def test_ground_truth_signals_become_bridge_patterns():
-    repository = Path(__file__).resolve().parents[3]
-    truth = json.loads((repository / "data" / "synthetic" / "ground_truth.json").read_text(encoding="utf-8"))
+    exact_signals = {
+        "UP32AB1234": ["FIR-LKO-001", "FIR-BBK-002", "FIR-AYD-004"],
+        "9876543210": ["FIR-LKO-001", "FIR-STP-003", "FIR-UNN-005"],
+        "safehouse@ybl": ["FIR-BBK-002", "FIR-STP-003", "FIR-AYD-004"],
+    }
     type_by_signal = {
         "UP32AB1234": EntityType.VEHICLE,
         "9876543210": EntityType.PHONE,
         "safehouse@ybl": EntityType.UPI_ID,
     }
     store = InMemoryGraphStore()
-    for signal, case_ids in truth["expected_exact_cross_case_signals"].items():
+    for signal, case_ids in exact_signals.items():
         for case_id in case_ids:
             add(store, case_id, type_by_signal[signal], signal)
 
     bridge_patterns = []
-    for case_id in {case for cases in truth["expected_exact_cross_case_signals"].values() for case in cases}:
+    for case_id in {case for cases in exact_signals.values() for case in cases}:
         bridge_patterns.extend(
             pattern for pattern in store.patterns(case_id)["patterns"]
             if pattern["pattern_type"] == "BRIDGE_ENTITY"

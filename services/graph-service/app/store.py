@@ -15,14 +15,13 @@ import re
 import threading
 import uuid
 from collections import defaultdict
-from datetime import datetime, timezone
-from itertools import combinations
+from datetime import UTC, datetime
+from itertools import combinations, pairwise
 from typing import Any
 
 import networkx as nx
 
 from .models import AlertStatus, EntityInput, EntityType, RelationshipInput
-
 
 ENTITY_WEIGHTS = {
     EntityType.PHONE.value: 1.0,
@@ -31,18 +30,28 @@ ENTITY_WEIGHTS = {
     EntityType.PERSON.value: 0.65,
     EntityType.ORG.value: 0.45,
     EntityType.LOCATION.value: 0.25,
+    EntityType.BANK.value: 0.75,
+    EntityType.BANK_ACCOUNT.value: 1.0,
+    EntityType.AADHAAR.value: 1.0,
+    EntityType.PAN.value: 1.0,
+    EntityType.PASSPORT.value: 1.0,
+    EntityType.EMAIL.value: 0.9,
+    EntityType.DATE.value: 0.15,
+    EntityType.IPC_SECTION.value: 0.2,
 }
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def canonicalize(entity_type: str, value: str) -> str:
     if entity_type == EntityType.PHONE.value:
         return re.sub(r"\D", "", value)[-10:]
-    if entity_type == EntityType.VEHICLE.value:
+    if entity_type in {"VEHICLE", "PAN", "PASSPORT"}:
         return re.sub(r"[^A-Z0-9]", "", value.upper())
+    if entity_type in {"AADHAAR", "BANK_ACCOUNT"}:
+        return re.sub(r"\D", "", value)
     if entity_type == EntityType.UPI_ID.value:
         return value.strip().lower()
     return re.sub(r"\s+", " ", value).strip().casefold()
@@ -68,7 +77,7 @@ class InMemoryGraphStore:
                     uuid.uuid5(uuid.NAMESPACE_URL, f"crimelens:entity:{entity_type}:{canonical}")
                 )
             existing_cases = sorted(case for case, ids in self.case_entities.items() if entity_id in ids)
-            entity = self.entities.setdefault(entity_id, {
+            stored = self.entities.get(entity_id, {
                 "id": entity_id,
                 "entity_type": entity_type,
                 "value": payload.value,
@@ -76,6 +85,7 @@ class InMemoryGraphStore:
                 "confidence": payload.confidence,
                 "occurrences": [],
             })
+            entity = {**stored, "occurrences": list(stored["occurrences"])}
             entity["confidence"] = max(entity["confidence"], payload.confidence)
             occurrence = {
                 "case_id": payload.case_id,
@@ -91,6 +101,7 @@ class InMemoryGraphStore:
                 for item in entity["occurrences"]
             }:
                 entity["occurrences"].append(occurrence)
+            self._persist_entity(entity, payload.case_id)
             self.entities[entity_id] = entity
             self.canonical_index[key] = entity_id
             self.case_entities[payload.case_id].add(entity_id)
@@ -104,7 +115,7 @@ class InMemoryGraphStore:
     def _upsert_alert(self, case_a: str, case_b: str, entity_id: str) -> dict[str, Any]:
         cases = sorted([case_a, case_b])
         alert_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"crimelens:alert:{cases[0]}:{cases[1]}"))
-        alert = self.alerts.get(alert_id, {
+        stored = self.alerts.get(alert_id, {
             "id": alert_id,
             "case_ids": cases,
             "shared_entity_ids": [],
@@ -114,6 +125,7 @@ class InMemoryGraphStore:
             "explanation": "",
             "created_at": utc_now(),
         })
+        alert = {**stored, "shared_entity_ids": list(stored["shared_entity_ids"])}
         if entity_id not in alert["shared_entity_ids"]:
             alert["shared_entity_ids"].append(entity_id)
         shared = [self.entities[item] for item in alert["shared_entity_ids"]]
@@ -125,8 +137,8 @@ class InMemoryGraphStore:
             f"Cases {cases[0]} and {cases[1]} share {len(shared)} observed entity signal(s): {summary}. "
             "Open the source occurrences before treating this as an investigative conclusion."
         )
-        self.alerts[alert_id] = alert
         self._persist_alert(alert)
+        self.alerts[alert_id] = alert
         return alert
 
     def create_relationship(self, payload: RelationshipInput) -> dict[str, Any]:
@@ -138,9 +150,25 @@ class InMemoryGraphStore:
                 f"crimelens:relationship:{payload.source_entity_id}:{payload.target_entity_id}:"
                 f"{payload.relationship_type}:{payload.source_case_id}:{payload.evidence_record_id or ''}",
             ))
-            relation = {"id": relation_id, **payload.model_dump(exclude={"id"})}
-            self.relationships[relation_id] = relation
+            relation = {"id": relation_id, **payload.model_dump(mode="json", exclude={"id"})}
+            prior = self.relationships.get(relation_id)
+            if prior and prior.get("evidence"):
+                previous_evidence = prior["evidence"]
+                next_evidence = relation.get("evidence")
+                if next_evidence:
+                    previous_content = {key: value for key, value in previous_evidence.items() if key != "sources"}
+                    next_content = {key: value for key, value in next_evidence.items() if key != "sources"}
+                    if previous_content != next_content:
+                        raise ValueError("Evidence reference already has different contents")
+                    sources = list(previous_evidence["sources"])
+                    for source in next_evidence["sources"]:
+                        if source not in sources:
+                            sources.append(source)
+                    next_evidence["sources"] = sources
+                else:
+                    relation["evidence"] = previous_evidence
             self._persist_relationship(relation)
+            self.relationships[relation_id] = relation
             return relation
 
     def get_linkage(self, case_id: str) -> dict[str, Any]:
@@ -226,7 +254,8 @@ class InMemoryGraphStore:
             raise KeyError("Entity not found")
         degree = nx.degree_centrality(graph).get(entity_id, 0.0)
         betweenness = nx.betweenness_centrality(graph).get(entity_id, 0.0)
-        pagerank = nx.pagerank(graph).get(entity_id, 0.0)
+        pagerank_scores = _pagerank_without_scipy(graph)
+        pagerank = pagerank_scores.get(entity_id, 0.0)
         return {
             "entity_id": entity_id,
             "centrality": {"degree": round(degree, 6), "betweenness": round(betweenness, 6), "pagerank": round(pagerank, 6)},
@@ -246,7 +275,7 @@ class InMemoryGraphStore:
                 groups = list(nx.community.greedy_modularity_communities(subgraph))
             components.extend(groups)
         result = []
-        for index, members in enumerate(sorted(components, key=lambda group: (-len(group), sorted(group)[0])), start=1):
+        for index, members in enumerate(sorted(components, key=lambda group: (-len(group), min(group))), start=1):
             result.append({
                 "community_id": index,
                 "members": sorted(members),
@@ -264,7 +293,7 @@ class InMemoryGraphStore:
         except nx.NetworkXNoPath as exc:
             raise ValueError("No path exists between the supplied entities") from exc
         steps = []
-        for source, target in zip(path, path[1:]):
+        for source, target in pairwise(path):
             edge = graph[source][target]
             steps.append({"source": source, "target": target, "relationship_type": edge.get("relationship_type"), "confidence": edge.get("confidence")})
         labels = [graph.nodes[item].get("label", item) for item in path]
@@ -341,9 +370,10 @@ class InMemoryGraphStore:
     def acknowledge_alert(self, alert_id: str) -> dict[str, Any]:
         if alert_id not in self.alerts:
             raise KeyError("Alert not found")
-        self.alerts[alert_id]["status"] = AlertStatus.ACKNOWLEDGED.value
-        self._persist_alert(self.alerts[alert_id])
-        return self.alerts[alert_id]
+        alert = {**self.alerts[alert_id], "status": AlertStatus.ACKNOWLEDGED.value}
+        self._persist_alert(alert)
+        self.alerts[alert_id] = alert
+        return alert
 
     # Hooks used by the Neo4j-backed subclass.
     def _persist_entity(self, entity: dict[str, Any], case_id: str) -> None:
@@ -371,21 +401,33 @@ class Neo4jGraphStore(InMemoryGraphStore):
         
         with neo4j_manager.get_session() as session:
             rows = session.run(
-                "MATCH (c:Case)-[o:HAS_ENTITY]->(e:Entity) RETURN c.case_id AS case_id, e, properties(o) AS occurrence"
+                "MATCH (e:Entity)-[o:INVOLVED_IN]->(c:Case) RETURN c.case_id AS case_id, e, properties(o) AS occurrence"
             )
             for row in rows:
                 data = dict(row["e"])
                 entity_id = data["id"]
                 entity = self.entities.setdefault(entity_id, {**data, "occurrences": []})
-                entity["occurrences"].append({"case_id": row["case_id"], **row["occurrence"]})
+                entity["occurrences"].append({
+                    "case_id": row["case_id"], "source_field": "unknown",
+                    "start_offset": None, "end_offset": None, **row["occurrence"],
+                })
                 self.canonical_index[(data["entity_type"], data["canonical_value"])] = entity_id
                 self.case_entities[row["case_id"]].add(entity_id)
             rows = session.run(
-                "MATCH (a:Entity)-[r:RELATED]->(b:Entity) RETURN a.id AS source, b.id AS target, properties(r) AS relation"
+                "MATCH (a:Entity)-[r]->(b:Entity) "
+                "WHERE type(r) <> 'INVOLVED_IN' "
+                "RETURN a.id AS source, b.id AS target, type(r) AS relationship_type, properties(r) AS relation"
             )
             for row in rows:
                 relation = dict(row["relation"])
-                relation.update(source_entity_id=row["source"], target_entity_id=row["target"])
+                if relation.get("evidence_json"):
+                    import json
+                    relation["evidence"] = json.loads(relation.pop("evidence_json"))
+                relation.update(
+                    source_entity_id=row["source"],
+                    target_entity_id=row["target"],
+                    relationship_type=row["relationship_type"],
+                )
                 self.relationships[relation["id"]] = relation
             rows = session.run("MATCH (a:LinkAlert) RETURN properties(a) AS alert")
             for row in rows:
@@ -394,14 +436,9 @@ class Neo4jGraphStore(InMemoryGraphStore):
                 alert["shared_entity_ids"] = list(alert.get("shared_entity_ids", []))
                 self.alerts[alert["id"]] = alert
 
-    def upsert_entity(self, payload: EntityInput) -> dict[str, Any]:
-        result = super().upsert_entity(payload)
-        self._persist_entity(result["entity"], payload.case_id)
-        return result
-
     def _persist_entity(self, entity: dict[str, Any], case_id: str) -> None:
         if not self.repo:
-            return
+            raise RuntimeError("Neo4j repository is not ready")
         occurrence = next((item for item in reversed(entity["occurrences"]) if item["case_id"] == case_id), {})
         self.repo.upsert_entity(
             entity_id=entity["id"],
@@ -417,7 +454,7 @@ class Neo4jGraphStore(InMemoryGraphStore):
 
     def _persist_relationship(self, relation: dict[str, Any]) -> None:
         if not self.repo:
-            return
+            raise RuntimeError("Neo4j repository is not ready")
         self.repo.create_relationship(
             source_entity_id=relation["source_entity_id"],
             target_entity_id=relation["target_entity_id"],
@@ -426,18 +463,51 @@ class Neo4jGraphStore(InMemoryGraphStore):
             confidence=relation.get("confidence", 1.0),
             why_linked=relation.get("why_linked", ""),
             relationship_id=relation["id"],
-            evidence_record_id=relation.get("evidence_record_id")
+            evidence_record_id=relation.get("evidence_record_id"),
+            evidence=relation.get("evidence"),
         )
 
     def _persist_alert(self, alert: dict[str, Any]) -> None:
         if not self.repo:
-            return
+            raise RuntimeError("Neo4j repository is not ready")
         with self.repo._driver.session() as session:
             session.run("MERGE (a:LinkAlert {id:$id}) SET a += $properties", id=alert["id"], properties=alert)
 
 
 def build_store() -> InMemoryGraphStore:
-    import os
     if os.getenv("GRAPH_BACKEND", "memory").lower() != "neo4j":
         return InMemoryGraphStore()
     return Neo4jGraphStore()
+
+
+def _pagerank_without_scipy(
+    graph: nx.Graph,
+    damping: float = 0.85,
+    iterations: int = 100,
+    tolerance: float = 1e-9,
+) -> dict[str, float]:
+    """Small deterministic PageRank implementation without SciPy."""
+    nodes = list(graph.nodes)
+    if not nodes:
+        return {}
+    count = len(nodes)
+    rank = {node: 1.0 / count for node in nodes}
+    base = (1.0 - damping) / count
+    for _ in range(iterations):
+        next_rank = {node: base for node in nodes}
+        dangling = sum(rank[node] for node in nodes if graph.degree(node) == 0)
+        dangling_share = damping * dangling / count
+        for node in nodes:
+            next_rank[node] += dangling_share
+        for source in nodes:
+            degree = graph.degree(source)
+            if degree == 0:
+                continue
+            share = damping * rank[source] / degree
+            for target in graph.neighbors(source):
+                next_rank[target] += share
+        if sum(abs(next_rank[node] - rank[node]) for node in nodes) <= tolerance:
+            rank = next_rank
+            break
+        rank = next_rank
+    return rank

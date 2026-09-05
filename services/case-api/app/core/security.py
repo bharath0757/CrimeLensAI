@@ -1,5 +1,7 @@
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
+from uuid import uuid4
+
 import bcrypt
 import jwt
 
@@ -21,35 +23,40 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         plain_bytes = plain_password.encode('utf-8')
         hashed_bytes = hashed_password.encode('utf-8')
         return bcrypt.checkpw(plain_bytes, hashed_bytes)
-    except Exception:
+    except (ValueError, TypeError):
         return False
 
 
-def create_access_token(subject: str | Any, expires_delta: Optional[timedelta] = None, extra_claims: Optional[Dict[str, Any]] = None) -> str:
+def create_access_token(subject: str | Any, expires_delta: timedelta | None = None, extra_claims: dict[str, Any] | None = None) -> str:
     """Create signed JWT access token."""
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+    if expires_delta is not None:
+        expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(UTC) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     
     to_encode = {
         "exp": expire,
         "sub": str(subject),
-        "iat": datetime.now(timezone.utc),
+        "iat": datetime.now(UTC),
+        "iss": settings.JWT_ISSUER,
+        "aud": settings.JWT_AUDIENCE,
+        "jti": str(uuid4()),
     }
     if extra_claims:
+        if set(extra_claims) & set(to_encode):
+            raise ValueError("Extra claims cannot override registered token claims")
         to_encode.update(extra_claims)
         
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def decode_access_token(token: str) -> Dict[str, Any]:
+def decode_access_token(token: str) -> dict[str, Any]:
     """Decode and validate JWT access token."""
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise CrimeLensException(message="Authentication token has expired.", status_code=401)
-    except jwt.InvalidTokenError:
-        raise CrimeLensException(message="Invalid authentication token.", status_code=401)
+        return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM],
+                          issuer=settings.JWT_ISSUER, audience=settings.JWT_AUDIENCE,
+                          options={"require": ["exp", "iat", "sub", "iss", "aud", "jti"]})
+    except jwt.ExpiredSignatureError as exc:
+        raise CrimeLensException(message="Authentication token has expired.", status_code=401) from exc
+    except jwt.InvalidTokenError as exc:
+        raise CrimeLensException(message="Invalid authentication token.", status_code=401) from exc

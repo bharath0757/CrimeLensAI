@@ -1,17 +1,17 @@
 """Graph service API routes."""
 
-from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.analysis import FirAnalysisService
 from app.models import AlertStatus, FirAnalysisRequest
 from app.models.schemas import EntityUpsertRequest, RelationshipCreateRequest
+from app.security import require_service_token
 from app.services.analytics_service import AnalyticsService
 from app.services.graph_service import GraphService
 from app.store import build_store
 
-router = APIRouter(prefix="/api/v1", tags=["Graph"])
+router = APIRouter(prefix="/api/v1", tags=["Graph"], dependencies=[Depends(require_service_token)])
 store = build_store()
 graph_service = GraphService(store)
 analytics_service = AnalyticsService(store)
@@ -82,8 +82,8 @@ def predict_missing_links(
 
 @router.get("/alerts")
 def list_alerts(
-    case_id: Optional[str] = None,
-    status_filter: Optional[AlertStatus] = Query(default=None, alias="status"),
+    case_id: str | None = None,
+    status_filter: AlertStatus | None = Query(default=None, alias="status"),
 ) -> dict:
     """List cross-case connection alerts for the officer queue."""
     return {

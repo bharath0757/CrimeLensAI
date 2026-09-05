@@ -1,26 +1,27 @@
-from typing import Any, Optional
+from typing import Any
+
 from fastapi import APIRouter, Depends, Query
 
-from app.schemas.search import (
-    SearchCasesResponse,
-    SearchEntitiesResponse,
-    SearchDocumentsResponse,
-    SearchRelationshipsResponse,
-    GlobalSearchResponse,
-    GlobalSearchResult,
+from app.api.deps import (
+    get_case_repository,
+    get_current_user,
+    get_document_repository,
+    get_entity_repository,
+    get_relationship_repository,
 )
-from app.schemas.user import UserResponse
 from app.repositories.case_repo import CaseRepositoryInterface
 from app.repositories.document_repo import DocumentRepositoryInterface
 from app.repositories.entity_repo import EntityRepositoryInterface
 from app.repositories.relationship_repo import RelationshipRepositoryInterface
-from app.api.deps import (
-    get_case_repository,
-    get_document_repository,
-    get_entity_repository,
-    get_relationship_repository,
-    get_current_user,
+from app.schemas.search import (
+    GlobalSearchResponse,
+    GlobalSearchResult,
+    SearchCasesResponse,
+    SearchDocumentsResponse,
+    SearchEntitiesResponse,
+    SearchRelationshipsResponse,
 )
+from app.schemas.user import UserResponse
 
 router = APIRouter()
 
@@ -41,7 +42,7 @@ async def search_cases(
 @router.get("/entities", response_model=SearchEntitiesResponse, summary="Search Entities")
 async def search_entities(
     q: str = Query(..., min_length=1),
-    case_id: Optional[str] = None,
+    case_id: str | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     current_user: UserResponse = Depends(get_current_user),
@@ -55,7 +56,7 @@ async def search_entities(
 @router.get("/documents", response_model=SearchDocumentsResponse, summary="Search Documents")
 async def search_documents(
     q: str = Query(..., min_length=1),
-    case_id: Optional[str] = None,
+    case_id: str | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     current_user: UserResponse = Depends(get_current_user),
@@ -69,7 +70,7 @@ async def search_documents(
 @router.get("/relationships", response_model=SearchRelationshipsResponse, summary="Search Relationships")
 async def search_relationships(
     q: str = Query(..., min_length=1),
-    case_id: Optional[str] = None,
+    case_id: str | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     current_user: UserResponse = Depends(get_current_user),

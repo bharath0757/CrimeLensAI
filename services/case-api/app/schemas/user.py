@@ -1,12 +1,11 @@
-from enum import Enum
-from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from enum import StrEnum
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
-class UserRole(str, Enum):
+class UserRole(StrEnum):
     ADMIN = "ADMIN"
-    LEAD_INVESTIGATOR = "LEAD_INVESTIGATOR"
     ANALYST = "ANALYST"
     INVESTIGATOR = "INVESTIGATOR"
 
@@ -15,20 +14,27 @@ class UserBase(BaseModel):
     email: EmailStr
     full_name: str = Field(..., min_length=2, max_length=100)
     role: UserRole = UserRole.INVESTIGATOR
-    badge_number: Optional[str] = None
-    agency: Optional[str] = "CrimeLens AI Law Enforcement Agency"
+    badge_number: str | None = None
+    agency: str | None = "CrimeLens AI Law Enforcement Agency"
 
 
 class UserCreate(UserBase):
-    password: str = Field(..., min_length=6, max_length=100)
+    password: str = Field(..., min_length=12, max_length=72)
+
+    @field_validator("password")
+    @classmethod
+    def bcrypt_byte_limit(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > 72:
+            raise ValueError("Password must not exceed 72 UTF-8 bytes")
+        return value
 
 
 class UserUpdate(BaseModel):
-    full_name: Optional[str] = None
-    role: Optional[UserRole] = None
-    badge_number: Optional[str] = None
-    agency: Optional[str] = None
-    is_active: Optional[bool] = None
+    full_name: str | None = None
+    role: UserRole | None = None
+    badge_number: str | None = None
+    agency: str | None = None
+    is_active: bool | None = None
 
 
 class UserResponse(UserBase):
@@ -47,5 +53,5 @@ class Token(BaseModel):
 
 
 class TokenPayload(BaseModel):
-    sub: Optional[str] = None
-    role: Optional[str] = None
+    sub: str | None = None
+    role: str | None = None

@@ -1,98 +1,69 @@
-from typing import Any, List, Optional
-from fastapi import APIRouter, Depends, Query, HTTPException, status
-from pydantic import BaseModel, Field
-from datetime import datetime, timezone
+"""Case-scoped audit browsing and explicit hash-chain verification."""
 
-from app.schemas.user import UserResponse
-from app.api.deps import get_current_user
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.api.deps import get_case_repository, get_current_user
+from app.core.access import require_case_access
+from app.integrations.ledger_integration import LedgerService, get_ledger_service
+from app.repositories.case_repo import CaseRepositoryInterface
+from app.schemas.ledger import (
+    LedgerChainResponse,
+    LedgerRecordResponse,
+    LedgerVerificationResponse,
+)
+from app.schemas.user import UserResponse, UserRole
 
 router = APIRouter()
+User = Annotated[UserResponse, Depends(get_current_user)]
+Cases = Annotated[CaseRepositoryInterface, Depends(get_case_repository)]
+Ledger = Annotated[LedgerService, Depends(get_ledger_service)]
 
 
-class LedgerRecordResponse(BaseModel):
-    id: str
-    timestamp: str
-    action: str
-    actor: str
-    resource: str
-    dataHash: str
-    status: str = "VERIFIED"
-    verified: bool = True
+async def accessible_cases(user: UserResponse, cases: CaseRepositoryInterface, case_id: str | None):
+    if case_id:
+        await require_case_access(case_id, user, cases)
+        return [case_id]
+    if user.role == UserRole.ADMIN:
+        return None
+    items, total = await cases.list_cases(owner_id=user.id, limit=1001)
+    if total > 1000:
+        raise HTTPException(status_code=422, detail="Select a case to browse its audit trail")
+    return [item.id for item in items]
 
 
-class LedgerChainResponse(BaseModel):
-    total: int
-    offset: int
-    limit: int
-    items: List[LedgerRecordResponse]
-
-
-# In-memory mock ledger chain data
-_LEDGER_CHAIN = [
-    {
-        "id": "rec-001-a1b2",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "action": "CASE_CREATED",
-        "actor": "admin@crimelens.ai",
-        "resource": "Case: Operation CyberLabyrinth Fraud Ring (CASE-2026-001)",
-        "dataHash": "a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef",
-        "status": "VERIFIED",
-        "verified": True,
-    },
-    {
-        "id": "rec-002-c3d4",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "action": "ENTITY_EXTRACTED",
-        "actor": "system_nlp_pipeline",
-        "resource": "Entity: Vikram Sharma (PERSON)",
-        "dataHash": "890abcdef1234567890abcdef1234567890abcdef1234567890a1b2c3d4e5f6",
-        "status": "VERIFIED",
-        "verified": True,
-    },
-    {
-        "id": "rec-003-e5f6",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "action": "RELATIONSHIP_LINKED",
-        "actor": "lead_investigator",
-        "resource": "Relationship: Shared PHONE 9876543210 between Case 001 and Case 002",
-        "dataHash": "f6e5d4c3b2a109876543210fedcba09876543210fedcba09876543210fedcba0",
-        "status": "VERIFIED",
-        "verified": True,
-    },
-]
-
-
-@router.get("/chain", summary="Get Hash Chain Audit Records")
+@router.get("/chain", response_model=LedgerChainResponse)
 async def get_ledger_chain(
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-    current_user: Optional[UserResponse] = Depends(get_current_user),
-) -> Any:
-    """Retrieve immutable hash-chain ledger entries for audit trails."""
-    total = len(_LEDGER_CHAIN)
-    items = _LEDGER_CHAIN[offset : offset + limit]
-    return LedgerChainResponse(total=total, offset=offset, limit=limit, items=items)
+    current_user: User, case_repo: Cases, ledger: Ledger,
+    limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
+    case_id: str | None = None,
+) -> LedgerChainResponse:
+    scope = await accessible_cases(current_user, case_repo, case_id)
+    if scope == []:
+        return LedgerChainResponse(total=0, offset=offset, limit=limit, items=[])
+    chain = await ledger.chain(limit, offset, scope)
+    if scope is not None and any(record.case_id not in scope for record in chain.records):
+        raise HTTPException(status_code=502, detail="Audit service returned an out-of-scope record")
+    return LedgerChainResponse(total=chain.total, offset=chain.offset, limit=chain.limit, items=[
+        LedgerRecordResponse(
+            id=record.id, sequence=record.sequence, timestamp=record.timestamp,
+            action=record.action, actor=record.actor,
+            resource=f"{record.resource_type}: {record.record_id}",
+            dataHash=record.hash, previous_hash=record.previous_hash,
+        ) for record in chain.records
+    ])
 
 
-@router.get("/verify/{record_id}", summary="Verify Hash Chain Integrity")
+@router.get("/verify/{record_id}", response_model=LedgerVerificationResponse)
 async def verify_ledger_record(
-    record_id: str,
-    current_user: Optional[UserResponse] = Depends(get_current_user),
-) -> Any:
-    """Recompute and verify hash chain integrity for a specific audit record."""
-    record = next((r for r in _LEDGER_CHAIN if r["id"] == record_id or r["id"].startswith(record_id)), None)
-    if not record:
-        return {
-            "record_id": record_id,
-            "status": "VERIFIED",
-            "verified": True,
-            "message": f"Record #{record_id} verification check passed.",
-        }
-    
-    return {
-        "record_id": record["id"],
-        "status": record["status"],
-        "verified": record["verified"],
-        "dataHash": record["dataHash"],
-        "message": "Hash integrity recomputed successfully. Chain unbroken.",
-    }
+    record_id: str, current_user: User, case_repo: Cases, ledger: Ledger,
+    case_id: str | None = None,
+) -> LedgerVerificationResponse:
+    scope = await accessible_cases(current_user, case_repo, case_id)
+    if scope == []:
+        raise HTTPException(status_code=404, detail="Audit record not found")
+    result = await ledger.verify(record_id, scope)
+    if scope is not None and result.case_id not in scope:
+        raise HTTPException(status_code=502, detail="Audit service returned an out-of-scope verification")
+    return result

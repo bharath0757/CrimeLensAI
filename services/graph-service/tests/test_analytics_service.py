@@ -1,5 +1,6 @@
+from contextlib import suppress
+
 import pytest
-from app.services.analytics_service import AnalyticsService
 
 
 class TestCentrality:
@@ -77,10 +78,8 @@ class TestShortestPath:
         ids = list(store.entities.keys())
         # These are in separate cases with no shared entities, so they may or may not be connected
         # depending on whether cases create implicit connections. Just verify it doesn't crash.
-        try:
+        with suppress(KeyError, ValueError):
             analytics_service.get_shortest_path(ids[0], ids[1])
-        except (KeyError, ValueError):
-            pass  # Expected if no path exists
 
 
 class TestExplanations:

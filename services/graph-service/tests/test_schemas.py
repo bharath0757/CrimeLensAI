@@ -1,8 +1,10 @@
 import pytest
 from app.models.schemas import (
-    EntityUpsertRequest, EntityType, RelationshipCreateRequest,
-    ALLOWED_RELATIONSHIP_TYPES,
+    EntityType,
+    EntityUpsertRequest,
+    RelationshipCreateRequest,
 )
+from pydantic import ValidationError
 
 
 class TestEntityUpsertRequest:
@@ -43,32 +45,32 @@ class TestEntityUpsertRequest:
         assert req.normalized_value == "rajesh kumar"
     
     def test_rejects_empty_case_id(self):
-        with pytest.raises(Exception):  # ValidationError
+        with pytest.raises(ValidationError):
             EntityUpsertRequest(
                 case_id="", entity_type=EntityType.PERSON, value="X",
             )
     
     def test_rejects_empty_value(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             EntityUpsertRequest(
                 case_id="CASE-001", entity_type=EntityType.PERSON, value="",
             )
     
     def test_rejects_invalid_entity_type(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             EntityUpsertRequest(
                 case_id="CASE-001", entity_type="INVALID_TYPE", value="X",
             )
     
     def test_rejects_confidence_above_1(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             EntityUpsertRequest(
                 case_id="CASE-001", entity_type=EntityType.PERSON,
                 value="X", confidence=1.5,
             )
     
     def test_rejects_confidence_below_0(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             EntityUpsertRequest(
                 case_id="CASE-001", entity_type=EntityType.PERSON,
                 value="X", confidence=-0.1,
@@ -106,7 +108,7 @@ class TestRelationshipCreateRequest:
         assert req.relationship_type == "USES"
     
     def test_rejects_invalid_relationship_type(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             RelationshipCreateRequest(
                 source_entity_id="a", target_entity_id="b",
                 relationship_type="INVALID_TYPE", source_case_id="CASE-001",
@@ -114,7 +116,7 @@ class TestRelationshipCreateRequest:
             )
     
     def test_rejects_empty_source_entity_id(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             RelationshipCreateRequest(
                 source_entity_id="", target_entity_id="b",
                 relationship_type="USES", source_case_id="CASE-001",
@@ -122,7 +124,7 @@ class TestRelationshipCreateRequest:
             )
     
     def test_rejects_empty_why_linked(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             RelationshipCreateRequest(
                 source_entity_id="a", target_entity_id="b",
                 relationship_type="USES", source_case_id="CASE-001",
@@ -130,7 +132,7 @@ class TestRelationshipCreateRequest:
             )
     
     def test_confidence_bounds(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             RelationshipCreateRequest(
                 source_entity_id="a", target_entity_id="b",
                 relationship_type="USES", source_case_id="CASE-001",

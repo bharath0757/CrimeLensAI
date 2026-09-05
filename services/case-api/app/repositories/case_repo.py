@@ -1,18 +1,24 @@
 import uuid
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
-from app.schemas.case import CaseResponse, CaseCreate, CaseUpdate, CaseStatus, CasePriority
+from app.schemas.case import (
+    CaseCreate,
+    CasePriority,
+    CaseResponse,
+    CaseStatus,
+    CaseUpdate,
+)
 
 
 class CaseRepositoryInterface(ABC):
     @abstractmethod
-    async def get_by_id(self, case_id: str) -> Optional[CaseResponse]:
+    async def get_by_id(self, case_id: str) -> CaseResponse | None:
         pass
 
     @abstractmethod
-    async def get_by_number(self, case_number: str) -> Optional[CaseResponse]:
+    async def get_by_number(self, case_number: str) -> CaseResponse | None:
         pass
 
     @abstractmethod
@@ -20,11 +26,11 @@ class CaseRepositoryInterface(ABC):
         self,
         skip: int = 0,
         limit: int = 50,
-        status: Optional[CaseStatus] = None,
-        priority: Optional[CasePriority] = None,
-        owner_id: Optional[str] = None,
-        search_query: Optional[str] = None,
-    ) -> Tuple[List[CaseResponse], int]:
+        status: CaseStatus | None = None,
+        priority: CasePriority | None = None,
+        owner_id: str | None = None,
+        search_query: str | None = None,
+    ) -> tuple[list[CaseResponse], int]:
         pass
 
     @abstractmethod
@@ -32,7 +38,7 @@ class CaseRepositoryInterface(ABC):
         pass
 
     @abstractmethod
-    async def update(self, case_id: str, case_update: CaseUpdate) -> Optional[CaseResponse]:
+    async def update(self, case_id: str, case_update: CaseUpdate) -> CaseResponse | None:
         pass
 
     @abstractmethod
@@ -44,7 +50,7 @@ class CaseRepositoryInterface(ABC):
         pass
 
     @abstractmethod
-    async def count(self, status: Optional[CaseStatus] = None) -> int:
+    async def count(self, status: CaseStatus | None = None) -> int:
         pass
 
 
@@ -52,7 +58,7 @@ class InMemoryCaseRepository(CaseRepositoryInterface):
     """In-memory Case Repository implementation."""
 
     def __init__(self):
-        self._cases: Dict[str, Dict[str, Any]] = {}
+        self._cases: dict[str, dict[str, Any]] = {}
         self._case_counter = 100
         self._seed_sample_case()
 
@@ -71,8 +77,8 @@ class InMemoryCaseRepository(CaseRepositoryInterface):
             "document_count": 2,
             "entity_count": 3,
             "relationship_count": 2,
-            "created_at": datetime.now(timezone.utc),
-            "updated_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
         }
 
         case_id_2 = "case-sample-002"
@@ -89,17 +95,17 @@ class InMemoryCaseRepository(CaseRepositoryInterface):
             "document_count": 1,
             "entity_count": 3,
             "relationship_count": 1,
-            "created_at": datetime.now(timezone.utc),
-            "updated_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
         }
 
-    async def get_by_id(self, case_id: str) -> Optional[CaseResponse]:
+    async def get_by_id(self, case_id: str) -> CaseResponse | None:
         c = self._cases.get(case_id)
         if not c:
             return None
         return CaseResponse(**c)
 
-    async def get_by_number(self, case_number: str) -> Optional[CaseResponse]:
+    async def get_by_number(self, case_number: str) -> CaseResponse | None:
         for c in self._cases.values():
             if c["case_number"].lower() == case_number.lower():
                 return CaseResponse(**c)
@@ -109,11 +115,11 @@ class InMemoryCaseRepository(CaseRepositoryInterface):
         self,
         skip: int = 0,
         limit: int = 50,
-        status: Optional[CaseStatus] = None,
-        priority: Optional[CasePriority] = None,
-        owner_id: Optional[str] = None,
-        search_query: Optional[str] = None,
-    ) -> Tuple[List[CaseResponse], int]:
+        status: CaseStatus | None = None,
+        priority: CasePriority | None = None,
+        owner_id: str | None = None,
+        search_query: str | None = None,
+    ) -> tuple[list[CaseResponse], int]:
         filtered = list(self._cases.values())
 
         if status:
@@ -137,9 +143,9 @@ class InMemoryCaseRepository(CaseRepositoryInterface):
         case_id = f"case-{uuid.uuid4().hex[:8]}"
         self._case_counter += 1
         case_number = case_create.case_number or f"CASE-2026-{self._case_counter:03d}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
-        assigned_ids = list(set(case_create.assigned_investigator_ids + [owner_id]))
+        assigned_ids = list(set([*case_create.assigned_investigator_ids, owner_id]))
 
         c_dict = {
             "id": case_id,
@@ -160,7 +166,7 @@ class InMemoryCaseRepository(CaseRepositoryInterface):
         self._cases[case_id] = c_dict
         return CaseResponse(**c_dict)
 
-    async def update(self, case_id: str, case_update: CaseUpdate) -> Optional[CaseResponse]:
+    async def update(self, case_id: str, case_update: CaseUpdate) -> CaseResponse | None:
         c = self._cases.get(case_id)
         if not c:
             return None
@@ -169,7 +175,7 @@ class InMemoryCaseRepository(CaseRepositoryInterface):
         for k, v in update_dict.items():
             if v is not None:
                 c[k] = v
-        c["updated_at"] = datetime.now(timezone.utc)
+        c["updated_at"] = datetime.now(UTC)
         return CaseResponse(**c)
 
     async def update_counts(self, case_id: str, doc_delta: int = 0, entity_delta: int = 0, rel_delta: int = 0):
@@ -178,7 +184,7 @@ class InMemoryCaseRepository(CaseRepositoryInterface):
             c["document_count"] = max(0, c.get("document_count", 0) + doc_delta)
             c["entity_count"] = max(0, c.get("entity_count", 0) + entity_delta)
             c["relationship_count"] = max(0, c.get("relationship_count", 0) + rel_delta)
-            c["updated_at"] = datetime.now(timezone.utc)
+            c["updated_at"] = datetime.now(UTC)
 
     async def delete(self, case_id: str) -> bool:
         if case_id in self._cases:
@@ -186,7 +192,7 @@ class InMemoryCaseRepository(CaseRepositoryInterface):
             return True
         return False
 
-    async def count(self, status: Optional[CaseStatus] = None) -> int:
+    async def count(self, status: CaseStatus | None = None) -> int:
         if not status:
             return len(self._cases)
         return sum(1 for c in self._cases.values() if c["status"] == status)

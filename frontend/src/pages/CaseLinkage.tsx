@@ -5,7 +5,9 @@
  */
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
+import type { LinkedCase } from "../lib/contracts";
 import ForceGraph2D from "react-force-graph-2d";
 import { useTheme } from "../contexts/ThemeContext";
 
@@ -14,7 +16,8 @@ interface RelatedCase {
   caseTitle: string;
   entityName: string;
   entityType: string;
-  status: string;
+  explanation: string;
+  strength: number;
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -29,11 +32,13 @@ const TYPE_COLORS: Record<string, string> = {
 
 export function CaseLinkage() {
   const { theme } = useTheme();
+  const [searchParams] = useSearchParams();
+  const requestedCaseId = searchParams.get("caseId") || "";
 
   const [cases, setCases] = useState<any[]>([]);
   const [status, setStatus] = useState<"loading" | "success" | "error" | "empty">("loading");
-  const [selectedCaseId, setSelectedCaseId] = useState<string>("");
-  const [linkageData, setLinkageData] = useState<any[]>([]);
+  const [selectedCaseId, setSelectedCaseId] = useState<string>(requestedCaseId);
+  const [linkageData, setLinkageData] = useState<LinkedCase[]>([]);
   const [linkageStatus, setLinkageStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -42,11 +47,17 @@ export function CaseLinkage() {
   const [dimensions, setDimensions] = useState({ width: 0, height: 400 });
 
   useEffect(() => {
+    let active = true;
     const fetchCases = async () => {
       setStatus("loading");
       try {
-        const casesData = await api.cases.list(0, 100) as any;
-        const items = Array.isArray(casesData) ? casesData : (casesData?.items || []);
+        const casesData = await api.cases.metadata(0, 100);
+        const items = [...casesData.items];
+        if (requestedCaseId && !items.some((item: { id: string }) => item.id === requestedCaseId)) {
+          items.unshift(await api.cases.get(requestedCaseId));
+        }
+        if (!active) return;
+        if (requestedCaseId) setSelectedCaseId(requestedCaseId);
         if (items.length > 0) {
           setCases(items);
           setStatus("success");
@@ -54,12 +65,14 @@ export function CaseLinkage() {
           setStatus("empty");
         }
       } catch (error) {
+        if (!active) return;
         console.error("Failed to fetch cases for linkage:", error);
         setStatus("error");
       }
     };
     fetchCases();
-  }, []);
+    return () => { active = false; };
+  }, [requestedCaseId]);
 
   // Handle Resize for ForceGraph
   useEffect(() => {
@@ -91,6 +104,7 @@ export function CaseLinkage() {
   }, [cases, searchQuery]);
 
   useEffect(() => {
+    let active = true;
     if (!selectedCaseId) {
       setLinkageData([]);
       setLinkageStatus("idle");
@@ -99,16 +113,20 @@ export function CaseLinkage() {
     
     const fetchLinkage = async () => {
       setLinkageStatus("loading");
+      setLinkageData([]);
       try {
-        const res: any = await api.graph.getCaseLinkage(selectedCaseId);
+        const res = await api.graph.getCaseLinkage(selectedCaseId);
+        if (!active) return;
         setLinkageData(res.linked_cases || []);
         setLinkageStatus("success");
       } catch (err) {
+        if (!active) return;
         console.error("Failed to fetch linkage", err);
         setLinkageStatus("error");
       }
     };
     fetchLinkage();
+    return () => { active = false; };
   }, [selectedCaseId]);
 
   const selectedCase = useMemo(() => {
@@ -119,16 +137,17 @@ export function CaseLinkage() {
   const relationships = useMemo(() => {
     if (!selectedCase || !linkageData || linkageData.length === 0) return [] as RelatedCase[];
     
-    return linkageData.map(item => {
-      const otherCase = cases.find(c => (c.id || c._id || c.firNumber) === item.linked_case);
-      return {
-        caseId: item.linked_case,
-        caseTitle: otherCase?.title || otherCase?.firNumber || item.linked_case,
-        entityName: item.shared_entity,
-        entityType: item.entity_type,
-        status: "CONFIRMED"
-      };
-    }) as RelatedCase[];
+    return linkageData.flatMap(item => {
+      const otherCase = cases.find(c => c.id === item.case_id);
+      return item.shared_entities.map(entity => ({
+        caseId: item.case_id,
+        caseTitle: otherCase?.title || item.case_id,
+        entityName: entity.value,
+        entityType: entity.entity_type,
+        explanation: item.explanation,
+        strength: item.link_strength,
+      }));
+    });
   }, [selectedCase, cases, linkageData]);
 
   const graphData = useMemo(() => {
@@ -200,11 +219,12 @@ export function CaseLinkage() {
   useEffect(() => {
       // Auto zoom to fit when graph updates
       if (graphRef.current && graphData.nodes.length > 0) {
-        setTimeout(() => {
+        const timer = setTimeout(() => {
             if (graphRef.current) {
                 graphRef.current.zoomToFit(400, 50);
             }
         }, 600);
+        return () => clearTimeout(timer);
       }
   }, [graphData]);
 
@@ -261,6 +281,7 @@ export function CaseLinkage() {
             <input
               type="text"
               placeholder="Search by ID or Title..."
+              aria-label="Search loaded cases by ID or title"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               className="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-lg px-4 py-2 text-surface-900 dark:text-white mb-4 focus:ring-2 focus:ring-primary-500 focus:outline-none transition-colors"
@@ -348,12 +369,12 @@ export function CaseLinkage() {
                   <div className="py-6 flex flex-col items-center justify-center text-surface-500 dark:text-surface-400">
                     <p className="text-2xl mb-2">🔗</p>
                     <p className="font-medium text-surface-900 dark:text-white">No case linkages found</p>
-                    <p className="text-sm text-center">No confirmed connections are currently available for this case.</p>
+                    <p className="text-sm text-center">No candidate connections are currently available for this case.</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {relationships.map((rel, idx) => (
-                      <div key={idx} className="bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-lg p-4 transition-colors flex flex-col">
+                    {relationships.map(rel => (
+                      <div key={`${rel.caseId}:${rel.entityType}:${rel.entityName}`} className="bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-lg p-4 transition-colors flex flex-col">
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-xs font-medium bg-primary-100 text-primary-800 dark:bg-primary-900/50 dark:text-primary-300 px-2 py-0.5 rounded truncate max-w-[40%]">
                             {selectedCase.title || selectedCase.firNumber}
@@ -370,6 +391,8 @@ export function CaseLinkage() {
                           <p className="text-xs text-surface-500 dark:text-surface-400">
                             Relationship: <span className="font-semibold text-surface-900 dark:text-white">Shared {rel.entityType}</span>
                           </p>
+                          <p className="text-xs text-surface-600 dark:text-surface-300">{rel.explanation}</p>
+                          <p className="text-xs text-surface-500 dark:text-surface-400">Link score: {rel.strength.toFixed(2)}. Candidate lead, not a finding or probability of guilt.</p>
                         </div>
                       </div>
                     ))}
@@ -399,7 +422,11 @@ export function CaseLinkage() {
                         nodeAutoColorBy="type"
                         nodeColor={(node: any) => node.color}
                         nodeVal={(node: any) => node.val}
-                        nodeLabel="name"
+                        nodeLabel={node => {
+                          const label = document.createElement("span");
+                          label.textContent = String(node.name || node.id || "Entity");
+                          return label.innerHTML;
+                        }}
                         linkColor={() => theme === "light" ? "#cbd5e1" : "#334155"} // slate-300 for light, slate-700 for dark
                         backgroundColor={theme === "light" ? "#ffffff" : "#020617"} // white for light, surface-950 for dark
                         linkDirectionalArrowLength={3.5}

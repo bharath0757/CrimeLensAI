@@ -5,7 +5,9 @@
 # ---- Environment & Secrets ----
 .env
 .env.local
-.env.*.local
+.env.*
+!.env.example
+!**/.env.example
 *.pem
 *.key
 
@@ -52,6 +54,8 @@ Thumbs.db
 
 # ---- Misc ----
 uploads/
+output/
+tmp/
 *.bak
 *.tmp
 *.temp

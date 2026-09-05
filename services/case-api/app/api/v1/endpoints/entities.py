@@ -1,56 +1,56 @@
-from typing import Any, Optional
+"""Case-scoped entity APIs with victim-field privacy and reviewed AI ingestion."""
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.api.deps import (
+    get_case_repository,
+    get_current_user,
+    get_document_repository,
+    get_entity_repository,
+    get_relationship_repository,
+    require_service_token,
+)
+from app.core.access import require_case_access
+from app.repositories.case_repo import CaseRepositoryInterface
+from app.repositories.document_repo import DocumentRepositoryInterface
+from app.repositories.entity_repo import EntityRepositoryInterface
+from app.repositories.relationship_repo import RelationshipRepositoryInterface
+from app.schemas.document import ProcessingStatus
 from app.schemas.entity import (
-    EntityResponse,
     EntityCreate,
-    EntityUpdate,
     EntityListResponse,
+    EntityResponse,
     EntityType,
+    EntityUpdate,
+    UnmaskRequest,
 )
 from app.schemas.relationship import (
     AIExtractionIngestRequest,
     AIExtractionIngestResponse,
     RelationshipCreate,
 )
-from app.schemas.user import UserResponse
-from app.repositories.entity_repo import EntityRepositoryInterface
-from app.repositories.relationship_repo import RelationshipRepositoryInterface
-from app.repositories.case_repo import CaseRepositoryInterface
-from app.repositories.document_repo import DocumentRepositoryInterface
-from app.schemas.document import ProcessingStatus
-from app.api.deps import (
-    get_entity_repository,
-    get_relationship_repository,
-    get_case_repository,
-    get_document_repository,
-    get_current_user,
-)
+from app.schemas.user import UserResponse, UserRole
+from app.services.audit_events import record_security_event
+from app.services.privacy import masked_entity
 
 router = APIRouter()
 
 
-@router.post("/cases/{case_id}/entities", response_model=EntityResponse, status_code=status.HTTP_201_CREATED, summary="Create Entity")
+@router.post("/cases/{case_id}/entities", response_model=EntityResponse, status_code=201, summary="Create Entity")
 async def create_entity(
     case_id: str,
     entity_create: EntityCreate,
     current_user: UserResponse = Depends(get_current_user),
     case_repo: CaseRepositoryInterface = Depends(get_case_repository),
     ent_repo: EntityRepositoryInterface = Depends(get_entity_repository),
-) -> Any:
-    """Manually add or associate an entity with a case."""
-    case = await case_repo.get_by_id(case_id)
-    if not case:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found.")
-
+) -> EntityResponse:
+    await require_case_access(case_id, current_user, case_repo, write=True)
     entity = await ent_repo.create(case_id, entity_create)
     await case_repo.update_counts(case_id, entity_delta=1)
     from app.integrations.graph_integration import graph_service_integration
-    try:
-        await graph_service_integration.sync_entity(case_id, entity)
-    except Exception as e:
-        import logging; logging.error(f'Graph sync failed: {e}')
-    return entity
+
+    await graph_service_integration.sync_entity(case_id, entity)
+    return masked_entity(entity)
 
 
 @router.get("/cases/{case_id}/entities", response_model=EntityListResponse, summary="List Case Entities")
@@ -58,25 +58,17 @@ async def list_case_entities(
     case_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    entity_type: Optional[EntityType] = None,
-    search: Optional[str] = None,
+    entity_type: EntityType | None = None,
+    search: str | None = None,
     current_user: UserResponse = Depends(get_current_user),
     case_repo: CaseRepositoryInterface = Depends(get_case_repository),
     ent_repo: EntityRepositoryInterface = Depends(get_entity_repository),
-) -> Any:
-    """List entities for a case with optional type filter and search query."""
-    case = await case_repo.get_by_id(case_id)
-    if not case:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found.")
-
+) -> EntityListResponse:
+    await require_case_access(case_id, current_user, case_repo)
     items, total = await ent_repo.list_by_case(
-        case_id,
-        skip=skip,
-        limit=limit,
-        entity_type=entity_type,
-        search_query=search,
+        case_id, skip=skip, limit=limit, entity_type=entity_type, search_query=search,
     )
-    return EntityListResponse(total=total, items=items)
+    return EntityListResponse(total=total, items=[masked_entity(item) for item in items])
 
 
 @router.get("/entities/{entity_id}", response_model=EntityResponse, summary="Get Entity Details")
@@ -84,11 +76,33 @@ async def get_entity(
     entity_id: str,
     current_user: UserResponse = Depends(get_current_user),
     ent_repo: EntityRepositoryInterface = Depends(get_entity_repository),
-) -> Any:
-    """Retrieve detailed metadata for a specific entity."""
-    entity = await ent_repo.get_by_id(entity_id)
-    if not entity:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+    case_repo: CaseRepositoryInterface = Depends(get_case_repository),
+) -> EntityResponse:
+    entity = await _accessible_entity(entity_id, current_user, ent_repo, case_repo)
+    return masked_entity(entity)
+
+
+@router.post("/entities/{entity_id}/unmask", response_model=EntityResponse, summary="Audited Victim-Data Unmask")
+async def unmask_entity(
+    entity_id: str,
+    request: UnmaskRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    ent_repo: EntityRepositoryInterface = Depends(get_entity_repository),
+    case_repo: CaseRepositoryInterface = Depends(get_case_repository),
+) -> EntityResponse:
+    entity = await _accessible_entity(entity_id, current_user, ent_repo, case_repo)
+    if current_user.role == UserRole.ANALYST:
+        raise HTTPException(status_code=403, detail="Analysts cannot unmask victim-identifying data")
+    if not masked_entity(entity).is_masked:
+        return entity
+    await record_security_event(
+        actor=current_user.id,
+        action="VICTIM_PII_UNMASKED",
+        resource_type="ENTITY",
+        record_id=entity.id,
+        case_id=entity.case_id,
+        payload={"reason": request.reason, "entity_type": entity.entity_type.value},
+    )
     return entity
 
 
@@ -98,109 +112,96 @@ async def update_entity(
     entity_update: EntityUpdate,
     current_user: UserResponse = Depends(get_current_user),
     ent_repo: EntityRepositoryInterface = Depends(get_entity_repository),
-) -> Any:
-    """Update entity fields or properties."""
-    entity = await ent_repo.get_by_id(entity_id)
-    if not entity:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+    case_repo: CaseRepositoryInterface = Depends(get_case_repository),
+) -> EntityResponse:
+    entity = await _accessible_entity(entity_id, current_user, ent_repo, case_repo, write=True)
+    updated = await ent_repo.update(entity.id, entity_update)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Entity not found.")
+    return masked_entity(updated)
 
-    updated_entity = await ent_repo.update(entity_id, entity_update)
-    return updated_entity
 
-
-@router.delete("/entities/{entity_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete Entity")
+@router.delete("/entities/{entity_id}", status_code=204, summary="Delete Entity")
 async def delete_entity(
     entity_id: str,
     current_user: UserResponse = Depends(get_current_user),
     case_repo: CaseRepositoryInterface = Depends(get_case_repository),
     ent_repo: EntityRepositoryInterface = Depends(get_entity_repository),
 ) -> None:
-    """Delete an entity from a case."""
-    entity = await ent_repo.get_by_id(entity_id)
-    if not entity:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
-
+    entity = await _accessible_entity(entity_id, current_user, ent_repo, case_repo, write=True)
     await ent_repo.delete(entity_id)
     await case_repo.update_counts(entity.case_id, entity_delta=-1)
-    return None
 
 
-@router.post("/integrations/ai/extraction-results", response_model=AIExtractionIngestResponse, summary="Ingest AI Extraction Results Contract")
+@router.post(
+    "/integrations/ai/extraction-results",
+    response_model=AIExtractionIngestResponse,
+    summary="Ingest AI Extraction Results Contract",
+    dependencies=[Depends(require_service_token)],
+)
 async def ingest_ai_extraction_results(
     payload: AIExtractionIngestRequest,
     case_repo: CaseRepositoryInterface = Depends(get_case_repository),
     doc_repo: DocumentRepositoryInterface = Depends(get_document_repository),
     ent_repo: EntityRepositoryInterface = Depends(get_entity_repository),
     rel_repo: RelationshipRepositoryInterface = Depends(get_relationship_repository),
-) -> Any:
-    """
-    Interface Contract Endpoint for the AI/NLP teammate to send extracted entities and relationships
-    from their document processing model.
-    """
+) -> AIExtractionIngestResponse:
     case = await case_repo.get_by_id(payload.case_id)
-    if not case:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found.")
-
     document = await doc_repo.get_by_id(payload.document_id)
-    if not document:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found.")
+    if not document or document.case_id != payload.case_id:
+        raise HTTPException(status_code=404, detail="Document not found in this case.")
 
-    created_entities_map = {}
-    entities_count = 0
-
-    for e in payload.entities:
-        ent_obj = await ent_repo.create(
-            case_id=payload.case_id,
-            entity_create=EntityCreate(
-                name=e.name,
-                entity_type=e.entity_type,
-                description=e.description,
-                properties=e.properties,
-                confidence_score=e.confidence_score,
+    created_entities: dict[str, str] = {}
+    for extracted in payload.entities:
+        entity = await ent_repo.create(
+            payload.case_id,
+            EntityCreate(
+                name=extracted.name,
+                entity_type=extracted.entity_type,
+                description=extracted.description,
+                properties=extracted.properties,
+                confidence_score=extracted.confidence_score,
                 source_document_id=payload.document_id,
             ),
         )
-        created_entities_map[e.name.lower()] = ent_obj.id
-        entities_count += 1
+        created_entities[extracted.name.casefold()] = entity.id
 
     relationships_count = 0
-    for r in payload.relationships:
-        src_id = created_entities_map.get(r.source_entity_name.lower())
-        tgt_id = created_entities_map.get(r.target_entity_name.lower())
-
-        if not src_id:
-            src_ent = await ent_repo.get_by_name_and_case(r.source_entity_name, payload.case_id)
-            if src_ent:
-                src_id = src_ent.id
-        if not tgt_id:
-            tgt_ent = await ent_repo.get_by_name_and_case(r.target_entity_name, payload.case_id)
-            if tgt_ent:
-                tgt_id = tgt_ent.id
-
-        if src_id and tgt_id:
+    for extracted in payload.relationships:
+        source_id = created_entities.get(extracted.source_entity_name.casefold())
+        target_id = created_entities.get(extracted.target_entity_name.casefold())
+        if not source_id:
+            source = await ent_repo.get_by_name_and_case(extracted.source_entity_name, payload.case_id)
+            source_id = source.id if source else None
+        if not target_id:
+            target = await ent_repo.get_by_name_and_case(extracted.target_entity_name, payload.case_id)
+            target_id = target.id if target else None
+        if source_id and target_id:
             await rel_repo.create(
-                case_id=payload.case_id,
-                rel_create=RelationshipCreate(
-                    source_entity_id=src_id,
-                    target_entity_id=tgt_id,
-                    relationship_type=r.relationship_type,
-                    description=r.description,
-                    properties=r.properties,
-                    confidence_score=r.confidence_score,
+                payload.case_id,
+                RelationshipCreate(
+                    source_entity_id=source_id,
+                    target_entity_id=target_id,
+                    relationship_type=extracted.relationship_type,
+                    description=extracted.description,
+                    properties=extracted.properties,
+                    confidence_score=extracted.confidence_score,
                     source_document_id=payload.document_id,
                 ),
             )
             relationships_count += 1
 
-    await doc_repo.update_extraction_counts(payload.document_id, entities_count, relationships_count)
+    entity_count = len(payload.entities)
+    await doc_repo.update_extraction_counts(payload.document_id, entity_count, relationships_count)
     await doc_repo.update_status(payload.document_id, ProcessingStatus.COMPLETED)
-    await case_repo.update_counts(payload.case_id, entity_delta=entities_count, rel_delta=relationships_count)
-
+    await case_repo.update_counts(payload.case_id, entity_delta=entity_count, rel_delta=relationships_count)
     return AIExtractionIngestResponse(
         success=True,
         case_id=payload.case_id,
         document_id=payload.document_id,
-        entities_created=entities_count,
+        entities_created=entity_count,
         relationships_created=relationships_count,
         message="AI extraction results ingested successfully.",
     )
@@ -209,24 +210,41 @@ async def ingest_ai_extraction_results(
 @router.post("/entities/{entity_id}/confirm", response_model=EntityResponse, summary="Confirm Extracted Entity")
 async def confirm_entity(
     entity_id: str,
+    current_user: UserResponse = Depends(get_current_user),
     ent_repo: EntityRepositoryInterface = Depends(get_entity_repository),
-) -> Any:
-    entity = await ent_repo.get_by_id(entity_id)
-    if not entity:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
-    if hasattr(ent_repo, "_entities") and entity_id in getattr(ent_repo, "_entities", {}):
-        ent_repo._entities[entity_id]["status"] = "CONFIRMED"
-    return await ent_repo.get_by_id(entity_id)
+    case_repo: CaseRepositoryInterface = Depends(get_case_repository),
+) -> EntityResponse:
+    entity = await _accessible_entity(entity_id, current_user, ent_repo, case_repo, write=True)
+    updated = await ent_repo.set_review_status(entity.id, "CONFIRMED")
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Entity not found.")
+    return masked_entity(updated)
 
 
 @router.post("/entities/{entity_id}/reject", response_model=EntityResponse, summary="Reject Extracted Entity")
 async def reject_entity(
     entity_id: str,
+    current_user: UserResponse = Depends(get_current_user),
     ent_repo: EntityRepositoryInterface = Depends(get_entity_repository),
-) -> Any:
-    entity = await ent_repo.get_by_id(entity_id)
+    case_repo: CaseRepositoryInterface = Depends(get_case_repository),
+) -> EntityResponse:
+    entity = await _accessible_entity(entity_id, current_user, ent_repo, case_repo, write=True)
+    updated = await ent_repo.set_review_status(entity.id, "REJECTED")
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Entity not found.")
+    return masked_entity(updated)
+
+
+async def _accessible_entity(
+    entity_id: str,
+    user: UserResponse,
+    entity_repo: EntityRepositoryInterface,
+    case_repo: CaseRepositoryInterface,
+    *,
+    write: bool = False,
+) -> EntityResponse:
+    entity = await entity_repo.get_by_id(entity_id)
     if not entity:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
-    if hasattr(ent_repo, "_entities") and entity_id in getattr(ent_repo, "_entities", {}):
-        ent_repo._entities[entity_id]["status"] = "REJECTED"
-    return await ent_repo.get_by_id(entity_id)
+    await require_case_access(entity.case_id, user, case_repo, write=write)
+    return entity

@@ -1,17 +1,13 @@
-from fastapi import APIRouter
-from app.core.config import settings
+from fastapi import APIRouter, Request
+
+from app.core.health import health_report
 
 router = APIRouter()
 
 
 @router.get("/health", summary="Health Check")
-async def health_check():
+async def health_check(request: Request):
     """
     Returns application health status.
     """
-    return {
-        "status": "healthy",
-        "message": "CrimeLens AI backend is operating normally.",
-        "app": settings.PROJECT_NAME,
-        "version": settings.VERSION,
-    }
+    return await health_report(request)

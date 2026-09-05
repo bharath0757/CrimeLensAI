@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { api } from "../lib/api";
+import { api, errorMessage } from "../lib/api";
+import type { CaseRecord } from "../lib/contracts";
 
 interface LedgerRecord {
   id: string;
@@ -18,13 +19,17 @@ export function AuditTrail() {
   const [status, setStatus] = useState<"loading" | "success" | "error" | "empty">("loading");
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [verificationFeedback, setVerificationFeedback] = useState<{ id: string, type: "success" | "error", message: string } | null>(null);
+  const [cases, setCases] = useState<CaseRecord[]>([]);
+  const [selectedCaseId, setSelectedCaseId] = useState("");
+  const [exportStatus, setExportStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [exportMessage, setExportMessage] = useState("");
 
   const fetchRecords = useCallback(async () => {
     setStatus("loading");
     setVerificationFeedback(null);
     try {
       // Fetch from ledger chain api
-      const response = await api.ledger.chain(50, 0) as any;
+      const response = await api.ledger.chain(50, 0, selectedCaseId) as any;
       
       // Determine array structure from response
       const items: LedgerRecord[] = Array.isArray(response) ? response : (response?.items || []);
@@ -40,11 +45,39 @@ export function AuditTrail() {
       console.error("Failed to load audit records:", error);
       setStatus("error");
     }
-  }, []);
+  }, [selectedCaseId]);
 
   useEffect(() => {
     fetchRecords();
   }, [fetchRecords]);
+
+  useEffect(() => {
+    api.cases.metadata(0, 100).then(result => {
+      setCases(result.items);
+      setSelectedCaseId(current => current || result.items[0]?.id || "");
+    }).catch(() => setCases([]));
+  }, []);
+
+  const handleExport = async () => {
+    if (!selectedCaseId) return;
+    setExportStatus("loading");
+    setExportMessage("");
+    try {
+      const report = await api.reports.downloadEvidence(selectedCaseId);
+      const url = URL.createObjectURL(report.blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = report.filename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setExportStatus("success");
+      setExportMessage(`Exported with SHA-256 ${report.sha256.slice(0, 16)}… and audit event ${report.auditEventId.slice(0, 8)}.`);
+      await fetchRecords();
+    } catch (error) {
+      setExportStatus("error");
+      setExportMessage(errorMessage(error));
+    }
+  };
 
   const handleVerify = async (recordId: string) => {
     setVerifyingId(recordId);
@@ -125,12 +158,23 @@ export function AuditTrail() {
             is recorded and verifiable.
           </p>
         </div>
-        <button
-          disabled
-          className="px-6 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-surface-200 disabled:text-surface-500 dark:disabled:bg-surface-700 dark:disabled:text-surface-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-        >
-          📄 Export Evidence PDF
-        </button>
+        <div className="flex max-w-md flex-col items-end gap-2">
+          <div className="flex gap-2">
+            <label className="sr-only" htmlFor="report-case">Case for audit and report</label>
+            <select id="report-case" value={selectedCaseId} onChange={event => setSelectedCaseId(event.target.value)} className="max-w-52 rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-900 dark:text-white">
+              <option value="">Select a case</option>
+              {cases.map(item => <option key={item.id} value={item.id}>{item.case_number}</option>)}
+            </select>
+            <button
+              onClick={handleExport}
+              disabled={!selectedCaseId || exportStatus === "loading"}
+              className="flex items-center gap-2 rounded-lg bg-primary-600 px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-surface-200 disabled:text-surface-500 dark:disabled:bg-surface-700 dark:disabled:text-surface-400"
+            >
+              {exportStatus === "loading" ? "Preparing PDF…" : "📄 Export Evidence PDF"}
+            </button>
+          </div>
+          {exportMessage && <p role="status" className={`text-xs ${exportStatus === "error" ? "text-danger-600" : "text-success-600"}`}>{exportMessage}</p>}
+        </div>
       </div>
 
       {/* Verification Status Summary */}

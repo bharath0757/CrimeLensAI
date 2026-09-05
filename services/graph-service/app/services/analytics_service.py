@@ -1,11 +1,15 @@
 """CrimeLensAI Graph Service — network analytics (centrality, communities, shortest path)."""
 
-from app.store import InMemoryGraphStore
 from app.models.schemas import (
-    CentralityResponse, CentralityMetrics,
-    CommunityResponse, Community, CommunityMember,
-    ShortestPathResponse, PathStep,
+    CentralityMetrics,
+    CentralityResponse,
+    Community,
+    CommunityMember,
+    CommunityResponse,
+    PathStep,
+    ShortestPathResponse,
 )
+from app.store import InMemoryGraphStore
 
 
 class AnalyticsService:

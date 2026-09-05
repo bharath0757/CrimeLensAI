@@ -1,5 +1,5 @@
+
 import pytest
-from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 
@@ -8,11 +8,14 @@ def client():
     """Create a test client with in-memory backend."""
     import os
     os.environ["GRAPH_BACKEND"] = "memory"
+    os.environ["SERVICE_AUTH_TOKEN"] = "graph-api-test-service-token-26189"
     # Clear settings cache so it picks up the env var
     from app.core.config import get_settings
     get_settings.cache_clear()
     from app.main import app
-    return TestClient(app)
+    result = TestClient(app)
+    result.headers["X-Service-Token"] = os.environ["SERVICE_AUTH_TOKEN"]
+    return result
 
 
 class TestHealthEndpoint:

@@ -13,7 +13,6 @@ Deduplication strategy:
 from __future__ import annotations
 
 import uuid
-from typing import Sequence
 
 from app.extractors.normalizers import normalize
 from app.extractors.regex_extractors import RawMatch, run_all_regex
@@ -26,6 +25,27 @@ def _spans_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> bool:
     return a_start < b_end and b_start < a_end
 
 
+def _is_identifier_heading(match: RawMatch, text: str, identifiers: list[RawMatch]) -> bool:
+    """A label directly preceding a parsed identifier is not a named entity.
+
+    Context matters: a standalone name such as Pan is not globally blacklisted.
+    """
+    headings = {
+        "UPI": "UPI_ID", "PAN": "PAN", "AADHAAR": "AADHAAR",
+        "PASSPORT": "PASSPORT", "PHONE": "PHONE", "EMAIL": "EMAIL",
+    }
+    kind = headings.get(match["value"].strip().upper())
+    if not kind or match["entity_type"] not in {"PERSON", "ORG", "LOCATION"}:
+        return False
+    for identifier in identifiers:
+        gap = identifier["start_offset"] - match["end_offset"]
+        if identifier["entity_type"] == kind and 0 <= gap <= 12:
+            between = text[match["end_offset"]:identifier["start_offset"]].strip(" :#.-").casefold()
+            if between in {"", "id", "no", "number"}:
+                return True
+    return False
+
+
 def _deduplicate(
     regex_matches: list[RawMatch],
     spacy_matches: list[RawMatch],
@@ -36,13 +56,53 @@ def _deduplicate(
     discard the spaCy match.  This prevents double-counting phone
     numbers that spaCy might tag as CARDINAL, etc.
     """
-    combined: list[RawMatch] = list(regex_matches)
+    priority = {
+        "AADHAAR": 100,
+        "PAN": 100,
+        "PASSPORT": 100,
+        "BANK_ACCOUNT": 100,
+        "EMAIL": 100,
+        "UPI_ID": 100,
+        "PHONE": 95,
+        "VEHICLE": 95,
+        "IPC_SECTION": 95,
+        "DATE": 90,
+        "PERSON": 60,
+        "ORG": 60,
+        "LOCATION": 50,
+    }
+    combined: list[RawMatch] = []
+    for candidate in sorted(
+        regex_matches,
+        key=lambda item: (
+            -priority.get(item["entity_type"], 0),
+            -(item["end_offset"] - item["start_offset"]),
+            item["start_offset"],
+        ),
+    ):
+        duplicate = any(
+            candidate["entity_type"] == existing["entity_type"]
+            and candidate["start_offset"] == existing["start_offset"]
+            and candidate["end_offset"] == existing["end_offset"]
+            for existing in combined
+        )
+        conflicting_overlap = any(
+            _spans_overlap(
+                candidate["start_offset"],
+                candidate["end_offset"],
+                existing["start_offset"],
+                existing["end_offset"],
+            )
+            for existing in combined
+        )
+        if not duplicate and not conflicting_overlap:
+            combined.append(candidate)
 
     for sm in spacy_matches:
         overlaps = any(
             _spans_overlap(sm["start_offset"], sm["end_offset"],
                            rm["start_offset"], rm["end_offset"])
-            for rm in regex_matches
+            for rm in combined
         )
         if not overlaps:
             combined.append(sm)
@@ -74,17 +134,24 @@ def run_extraction(
     """
     regex_matches = run_all_regex(text)
     spacy_matches = extract_spacy_entities(text)
+    spacy_matches = [match for match in spacy_matches if not _is_identifier_heading(match, text, regex_matches)]
     combined = _deduplicate(regex_matches, spacy_matches)
 
     entities: list[ExtractedEntityResponse] = []
-    for match in combined:
+    for match in sorted(combined, key=lambda item: item["start_offset"]):
         entity_type = match["entity_type"]
         value = match["value"]
         normalized_value = normalize(entity_type, value)
 
         entities.append(
             ExtractedEntityResponse(
-                entity_id=str(uuid.uuid4()),
+                entity_id=str(
+                    uuid.uuid5(
+                        uuid.NAMESPACE_URL,
+                        f"crimelens:{case_id or 'unassigned'}:{source_field}:"
+                        f"{entity_type}:{normalized_value}:{match['start_offset']}:{match['end_offset']}",
+                    )
+                ),
                 entity_type=entity_type,
                 value=value,
                 normalized_value=normalized_value,

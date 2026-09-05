@@ -89,27 +89,37 @@ flowchart TD
 git clone https://github.com/<your-org>/CrimeLensAI.git
 cd CrimeLensAI
 
-# Copy example environment files
+# Create the local secret file and fill every blank value
 cp .env.example .env
 
 # Start all services + databases
 docker compose up --build
 ```
 
-This brings up:
+The default Compose profile exposes only the investigator UI and Case API. All
+databases and internal services remain isolated on the Docker network:
 
 | Service | URL |
 |---|---|
 | Web Frontend | http://localhost:5173 |
 | Case API Gateway | http://localhost:8000/docs |
-| Extraction Service | http://localhost:8001/docs |
-| Graph Service | http://localhost:8002/docs |
-| Ledger Service | http://localhost:8003/docs |
-| Ingestion Service | http://localhost:8004/docs |
-| Neo4j Browser | http://localhost:7474 |
-| PostgreSQL | localhost:5432 |
+| Health and dependency status | http://localhost:8000/health |
 
-### Developing a Single Service
+The first administrator is created from `BOOTSTRAP_ADMIN_EMAIL` and
+`BOOTSTRAP_ADMIN_PASSWORD`. Synthetic data is disabled by default. For a judge
+demo, set both `SEED_SYNTHETIC=true` and `ALLOW_DEMO_SEED=true`; this loads the
+deterministic 1,000-FIR, 20,000-CDR, and 20,000-transaction corpus.
+
+### Production deployment
+
+- Import `render.yaml` as a Render Blueprint for PostgreSQL and all backend
+  services. Provide the prompted administrator, Vercel-origin, and Neo4j secrets.
+- Deploy `frontend/` to Vercel and set
+  `VITE_API_BASE_URL=https://<render-api-host>/api/v1`.
+- Follow `deployment/render/README.md` for the release checks. Production demo
+  seeding remains off unless explicitly enabled.
+
+### Developing a single service
 
 Each service can also run standalone:
 
@@ -165,6 +175,10 @@ Before coding, ensure the OpenAPI spec in `/contracts/openapi/` is updated. This
 3. Open PR into `develop`
 4. Anyone from the team can review and approve it!
 5. `main` is reserved for **stable, demo-ready** state only.
+
+GitHub Actions validates TypeScript, frontend tests, all Python service tests,
+Python lint, deterministic datasets, Docker startup, real FIR extraction,
+structured evidence ingestion, PostgreSQL/Neo4j writes, and audit verification.
 
 ---
 

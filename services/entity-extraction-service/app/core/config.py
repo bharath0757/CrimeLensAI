@@ -19,7 +19,7 @@ class Settings:
     # Floor confidence for spaCy NER when model score is unavailable
     CONFIDENCE_SPACY_FLOOR: float = float(os.getenv("CONFIDENCE_SPACY_FLOOR", "0.70"))
 
-    # RapidFuzz threshold for fuzzy entity resolution (0–100)
+    # RapidFuzz threshold for fuzzy entity resolution (0-100)
     RESOLUTION_FUZZY_THRESHOLD: float = float(os.getenv("RESOLUTION_FUZZY_THRESHOLD", "80"))
 
 

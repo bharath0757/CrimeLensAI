@@ -1,145 +1,121 @@
-/**
- * CrimeLensAI — Dashboard Page
- *
- * Investigator Dashboard: stat cards showing key metrics,
- * collapsible overview, and a link to the detailed Network Analysis workspace.
- */
-
-import { useState, useEffect } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../lib/api";
+import { useAuth } from "../contexts/AuthContext";
+import { api, errorMessage } from "../lib/api";
+import { useLiveResource } from "../lib/useLiveResource";
 
-interface StatData {
-  totalCases: number;
-  entitiesExtracted: number;
-  crossCaseLinks: number;
-  pendingReviews: number | null;
+const panel = "rounded-xl border border-surface-200 bg-white p-5 shadow-sm dark:border-surface-800 dark:bg-surface-900";
+const button = "rounded-lg border border-surface-300 px-3 py-2 text-sm font-medium hover:bg-surface-100 focus-visible:outline-2 focus-visible:outline-primary-500 disabled:opacity-50 dark:border-surface-700 dark:hover:bg-surface-800";
+const integer = new Intl.NumberFormat("en-IN");
+const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 });
+const money = (value: string | null) => value === null ? "Unavailable" : currency.format(Number(value));
+
+function BarChart({ title, values }: { title: string; values: Record<string, number> }) {
+  const entries = Object.entries(values);
+  const max = Math.max(1, ...entries.map(([, count]) => count));
+  return <section className={panel} aria-label={title}>
+    <h2 className="mb-4 font-semibold">{title}</h2>
+    {entries.length === 0 ? <p className="text-sm">No records to display.</p> : <ul className="space-y-3">
+      {entries.map(([label, count]) => <li key={label}>
+        <div className="mb-1 flex justify-between gap-3 text-sm"><span>{label.replace(/_/g, " ")}</span><span>{integer.format(count)}</span></div>
+        <div aria-hidden="true" className="h-2 rounded bg-surface-100 dark:bg-surface-800"><div className="h-2 rounded bg-primary-500" style={{ width: `${100 * count / max}%` }} /></div>
+      </li>)}
+    </ul>}
+  </section>;
+}
+
+function ConnectionNotifications() {
+  const { user } = useAuth();
+  const [offset, setOffset] = useState(0);
+  const load = useCallback((signal: AbortSignal) => api.dashboard.alerts(signal, offset), [offset]);
+  const alerts = useLiveResource(load);
+  const [acknowledging, setAcknowledging] = useState<string | null>(null);
+  const busy = useRef(false);
+  const [actionError, setActionError] = useState("");
+  const acknowledge = async (id: string) => {
+    if (busy.current) return;
+    busy.current = true;
+    setAcknowledging(id);
+    setActionError("");
+    try {
+      await api.dashboard.acknowledge(id);
+      await alerts.refresh();
+    } catch (failure) {
+      setActionError(errorMessage(failure));
+    } finally {
+      busy.current = false;
+      setAcknowledging(null);
+    }
+  };
+  return <section className={panel} aria-label="Connection notifications">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <h2 className="text-lg font-semibold">Connection notifications</h2>
+      <button className={button} disabled={alerts.loading} onClick={() => void alerts.refresh()}>Refresh alerts</button>
+    </div>
+    <p className="mt-2 text-sm text-surface-600 dark:text-surface-300">Investigative leads, not findings of guilt. Acknowledging records receipt, not confirmation of a link.</p>
+    <p className="my-3 text-sm font-medium" role="status">{alerts.data ? `${alerts.data.unread} unacknowledged connections` : alerts.loading ? "Checking for connections…" : "Connection queue unavailable"}</p>
+    {alerts.error && <p role="alert" className="my-3 text-sm text-red-700 dark:text-red-300">Alerts could not refresh: {alerts.error}{alerts.data ? " Showing the last successful response." : ""}</p>}
+    {actionError && <p role="alert" className="my-3 text-sm text-red-700 dark:text-red-300">Acknowledgement failed: {actionError}</p>}
+    {alerts.data?.items.length === 0 && <p className="py-4 text-sm">No connections on this page for your accessible cases.</p>}
+    <ul className="divide-y divide-surface-200 dark:divide-surface-800">
+      {alerts.data?.items.map(alert => <li key={alert.id} className="space-y-2 py-4">
+        <div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{alert.title}</h3><span className="rounded bg-amber-100 px-2 py-1 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">{alert.severity}</span><span className="text-xs">{alert.status === "NEW" ? "New" : "Acknowledged"}</span></div>
+        <p className="break-words text-sm">{alert.explanation}</p>
+        <p className="text-xs text-surface-500 dark:text-surface-400">{new Date(alert.created_at).toLocaleString()}</p>
+        <div className="flex flex-wrap items-center gap-3">
+          {alert.case_ids.map(caseId => <Link key={caseId} to={`/case-linkage?caseId=${encodeURIComponent(caseId)}`} className="break-all text-sm text-primary-600 underline dark:text-primary-300">Review {caseId}</Link>)}
+          {alert.status === "NEW" && user?.role !== "ANALYST" && <button className={button} disabled={acknowledging !== null || alerts.loading} onClick={() => void acknowledge(alert.id)}>{acknowledging === alert.id ? "Recording…" : "Acknowledge"}</button>}
+        </div>
+      </li>)}
+    </ul>
+    {alerts.data && alerts.data.total > 20 && <div className="mt-3 flex items-center gap-3">
+      <button className={button} disabled={offset === 0 || alerts.loading} onClick={() => setOffset(Math.max(0, offset - 20))}>Previous alerts</button>
+      <span className="text-sm">Page {offset / 20 + 1}</span>
+      <button className={button} disabled={offset + 20 >= alerts.data.total || alerts.loading} onClick={() => setOffset(offset + 20)}>Next alerts</button>
+    </div>}
+  </section>;
 }
 
 export function Dashboard() {
-  const [statsData, setStatsData] = useState<StatData>({
-    totalCases: 0,
-    entitiesExtracted: 0,
-    crossCaseLinks: 0,
-    pendingReviews: null,
-  });
-  const [statsStatus, setStatsStatus] = useState<"loading" | "success" | "error">("loading");
-  const [isOverviewExpanded, setIsOverviewExpanded] = useState(true);
-
-  // Fetch Dashboard Stats
-  useEffect(() => {
-    const fetchStats = async () => {
-      setStatsStatus("loading");
-      try {
-        const data = await api.dashboard.stats() as any;
-        setStatsData({
-          totalCases: data.totalCases ?? 0,
-          entitiesExtracted: data.entitiesExtracted ?? 0,
-          crossCaseLinks: data.crossCaseLinks ?? 0,
-          pendingReviews: data.pendingReviews ?? 0,
-        });
-        setStatsStatus("success");
-      } catch (error) {
-        console.error("Failed to fetch dashboard stats:", error);
-        setStatsStatus("error");
-      }
-    };
-    fetchStats();
-  }, []);
-
-  const stats = [
-    { label: "Total Cases", value: statsStatus === "error" ? "—" : statsStatus === "loading" ? "..." : statsData.totalCases.toString(), icon: "📁", color: "from-primary-500 to-primary-700", borderClass: "border-t-primary-500 dark:border-t-transparent" },
-    { label: "Entities Extracted", value: statsStatus === "error" ? "—" : statsStatus === "loading" ? "..." : statsData.entitiesExtracted.toString(), icon: "🔍", color: "from-emerald-500 to-emerald-700", borderClass: "border-t-emerald-500 dark:border-t-transparent" },
-    { label: "Cross-Case Links", value: statsStatus === "error" ? "—" : statsStatus === "loading" ? "..." : statsData.crossCaseLinks.toString(), icon: "🔗", color: "from-amber-500 to-amber-700", borderClass: "border-t-amber-500 dark:border-t-transparent" },
-    { label: "Pending Reviews", value: statsStatus === "error" ? "—" : statsStatus === "loading" ? "..." : statsData.pendingReviews !== null ? statsData.pendingReviews.toString() : 'N/A', icon: "⏳", color: "from-rose-500 to-rose-700", borderClass: "border-t-rose-500 dark:border-t-transparent" },
+  const overview = useLiveResource(api.dashboard.overview);
+  const metrics = overview.data?.metrics;
+  const cards = [
+    ["Total Cases", metrics && integer.format(metrics.total_cases), "Cases you can access"],
+    ["High Risk Cases", metrics && integer.format(metrics.high_risk_cases), "Marked HIGH or CRITICAL priority"],
+    ["Linked Networks", metrics && integer.format(metrics.linked_networks), "Case groups sharing strong identifiers"],
+    ["Money Flow", metrics && money(metrics.money_flow), "Recorded transactions in INR; not proven losses"],
+    ["Active Investigations", metrics && integer.format(metrics.active_investigations), "OPEN and IN PROGRESS cases"],
   ];
-
-  return (
-    <div className="space-y-8 relative z-10">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-surface-900 dark:text-white transition-colors">Investigator Dashboard</h1>
-        <p className="text-surface-600 dark:text-surface-200 mt-1 transition-colors">
-          Clean investigator overview
-        </p>
-      </div>
-
-      {/* Collapsible Overview Header */}
-      <div className="flex items-center justify-between border-b border-surface-200 dark:border-surface-800 pb-2">
-        <h2 className="text-lg font-semibold text-surface-900 dark:text-white transition-colors">Dashboard Overview</h2>
-        <button 
-          onClick={() => setIsOverviewExpanded(!isOverviewExpanded)}
-          className="text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 rounded px-2 py-1"
-          aria-label={isOverviewExpanded ? "Collapse dashboard overview" : "Expand dashboard overview"}
-          aria-expanded={isOverviewExpanded}
-        >
-          {isOverviewExpanded ? "[Collapse]" : "[Expand]"}
-        </button>
-      </div>
-
-      {/* Expandable Content */}
-      {isOverviewExpanded && (
-        <div className="space-y-8 animate-in fade-in slide-in-from-top-2 duration-300">
-          {/* Stat Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {stats.map((stat) => (
-              <div
-                key={stat.label}
-                className={`bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl p-6 shadow-sm dark:shadow-none hover:shadow-md dark:hover:shadow-none hover:border-primary-500/30 dark:hover:border-primary-500/30 transition-all duration-300 border-t-4 ${stat.borderClass}`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-surface-600 dark:text-surface-200 transition-colors">{stat.label}</p>
-                    <p className="text-3xl font-bold mt-2 bg-gradient-to-r bg-clip-text text-transparent" style={{ backgroundImage: `linear-gradient(to right, var(--tw-gradient-stops))` }}>
-                      {stat.value}
-                    </p>
-                  </div>
-                  <span className="text-3xl">{stat.icon}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-          
-          <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl p-6 shadow-sm dark:shadow-none transition-colors">
-            <h3 className="font-medium text-surface-900 dark:text-white mb-2">Summary / Important Info</h3>
-            <p className="text-sm text-surface-600 dark:text-surface-300">
-              Your pending reviews are currently tracking {statsData.pendingReviews !== null ? statsData.pendingReviews : 'an unknown number of'} entities. Prioritize these for validation to improve the graph accuracy.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Call to Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Network Analysis Call to Action */}
-        <div className="bg-gradient-to-r from-primary-50 to-indigo-50 dark:from-primary-900/20 dark:to-indigo-900/20 border border-primary-100 dark:border-primary-500/20 rounded-xl p-8 shadow-sm text-center flex flex-col items-center transition-colors">
-          <h2 className="text-xl font-bold text-surface-900 dark:text-white mb-2">Explore the Network</h2>
-          <p className="text-surface-600 dark:text-surface-300 mb-6 text-sm flex-1">
-            Dive into the interactive criminal network visualization to examine case linkages, nodes, and entity profiles in a dedicated workspace.
-          </p>
-          <Link 
-            to="/network"
-            className="px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-md shadow-primary-500/20 transition-all focus:outline-none focus:ring-4 focus:ring-primary-500/30 w-full md:w-auto"
-          >
-            Open Network Analysis
-          </Link>
-        </div>
-
-        {/* Case Linkage Call to Action */}
-        <div className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-100 dark:border-emerald-500/20 rounded-xl p-8 shadow-sm text-center flex flex-col items-center transition-colors">
-          <h2 className="text-xl font-bold text-surface-900 dark:text-white mb-2">Discover Case Linkages</h2>
-          <p className="text-surface-600 dark:text-surface-300 mb-6 text-sm flex-1">
-            Investigate explicit connections between cases. Identify shared entities, locations, and personnel driving multi-case criminal activity.
-          </p>
-          <Link 
-            to="/case-linkage"
-            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium shadow-md shadow-emerald-500/20 transition-all focus:outline-none focus:ring-4 focus:ring-emerald-500/30 w-full md:w-auto"
-          >
-            Explore Case Linkages
-          </Link>
-        </div>
-      </div>
-
+  return <div className="space-y-6 text-surface-900 dark:text-surface-100">
+    <header className="flex flex-wrap items-start justify-between gap-4">
+      <div><h1 className="text-2xl font-bold">Investigator Dashboard</h1><p className="mt-1 text-sm text-surface-600 dark:text-surface-300">Live evidence overview · refreshes every 30 seconds while visible</p></div>
+      <button className={button} disabled={overview.loading} onClick={() => void overview.refresh()}>{overview.loading ? "Refreshing…" : "Refresh dashboard"}</button>
+    </header>
+    {overview.error && <p role="alert" className="rounded-lg border border-red-300 p-3 text-sm text-red-700 dark:text-red-300">Dashboard could not refresh: {overview.error}{overview.data ? " Showing the last successful snapshot; figures may be stale." : " Figures are unavailable, not zero."}</p>}
+    <p role="status" className="text-xs text-surface-600 dark:text-surface-300">{overview.data ? `Snapshot: ${new Date(overview.data.generated_at).toLocaleString()} · ${overview.data.data_backend === "postgres" ? "PostgreSQL" : "In-memory demo; financial totals unavailable"}` : overview.loading ? "Loading case metrics…" : "No dashboard snapshot available"}</p>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      {cards.map(([label, value, description]) => <section key={label} aria-label={label} className={`${panel} min-w-0`}>
+        <h2 className="text-sm font-medium">{label}</h2>
+        {value !== undefined ? <p className="my-3 break-words text-2xl font-bold">{value}</p> : overview.loading ? <div aria-label="Loading metric" className="my-3 h-8 animate-pulse rounded bg-surface-200 dark:bg-surface-700" /> : <p className="my-3 text-2xl">—</p>}
+        <p className="text-xs text-surface-600 dark:text-surface-300">{description}</p>
+      </section>)}
     </div>
-  );
+    {metrics && <p className="text-sm">{integer.format(metrics.total_entities)} extracted entities · {integer.format(metrics.pending_reviews)} awaiting review. Shared identifiers suggest leads; human verification is required.</p>}
+    <ConnectionNotifications />
+    {overview.data && <>
+      <div className="grid gap-4 md:grid-cols-3">
+        <BarChart title="Cases by status" values={overview.data.statistics.cases_by_status} />
+        <BarChart title="Cases by priority" values={overview.data.statistics.cases_by_priority} />
+        <BarChart title="Entities by type" values={overview.data.statistics.entities_by_type} />
+      </div>
+      <section className={panel} aria-label="Transaction activity">
+        <h2 className="font-semibold">Transaction activity</h2>
+        <p className="my-2 text-xs">Most recent 30 days with recorded transactions, grouped by UTC date. Totals include all accessible recorded transactions.</p>
+        {overview.data.statistics.transaction_timeline.length === 0 ? <p className="py-3 text-sm">No transaction history available.</p> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><caption className="sr-only">Recorded daily transaction amounts</caption><thead><tr><th className="py-2">Date (UTC)</th><th>Transactions</th><th>Amount (INR)</th></tr></thead><tbody>{overview.data.statistics.transaction_timeline.map(day => <tr key={day.date} className="border-t border-surface-200 dark:border-surface-800"><th scope="row" className="py-2 font-normal">{day.date}</th><td>{integer.format(day.count)}</td><td>{money(day.amount)}</td></tr>)}</tbody></table></div>}
+      </section>
+    </>}
+    <nav aria-label="Investigation tools" className="flex flex-wrap gap-4">
+      <Link className={button} to="/cases/new">Upload FIR</Link><Link className={button} to="/network">Open Network Analysis</Link><Link className={button} to="/case-linkage">Explore Case Linkages</Link><Link className={button} to="/audit">Audit Trail</Link>
+    </nav>
+  </div>;
 }

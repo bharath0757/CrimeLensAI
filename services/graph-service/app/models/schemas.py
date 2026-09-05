@@ -1,26 +1,28 @@
-from enum import Enum
-from typing import Optional, List
-from pydantic import BaseModel, Field, ConfigDict, field_validator, AliasChoices
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+
 from app.models import EntityType
+from app.models.evidence import RelationshipEvidence
 
 ALLOWED_RELATIONSHIP_TYPES = {
     "USES", "OWNS", "LOCATED_AT", "WORKS_FOR", "CONTACTED", 
     "TRANSACTED", "CO_LOCATED", "RELATED", "ASSOCIATED", 
-    "USED_PHONE", "CO_OCCURS"
+    "USED_PHONE", "CO_OCCURS", "CALLED", "TRANSFERRED_TO",
+    "INVOLVED_IN", "COMMUNICATED_WITH", "TRANSFERRED_FUNDS",
+    "HAS_ACCOUNT", "REGISTERED_TO"
 }
 
 class EntityUpsertRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     
     case_id: str = Field(min_length=1)
-    entity_id: Optional[str] = Field(default=None, validation_alias=AliasChoices('entity_id', 'id'))
+    entity_id: str | None = Field(default=None, validation_alias=AliasChoices('entity_id', 'id'))
     entity_type: EntityType
     value: str = Field(min_length=1)
-    normalized_value: Optional[str] = Field(default=None, validation_alias=AliasChoices('normalized_value', 'canonical_value'))
+    normalized_value: str | None = Field(default=None, validation_alias=AliasChoices('normalized_value', 'canonical_value'))
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     source_field: str = "unknown"
-    start_offset: Optional[int] = Field(default=None, ge=0)
-    end_offset: Optional[int] = Field(default=None, ge=0)
+    start_offset: int | None = Field(default=None, ge=0)
+    end_offset: int | None = Field(default=None, ge=0)
 
 class EntityUpsertResponse(BaseModel):
     status: str
@@ -28,7 +30,7 @@ class EntityUpsertResponse(BaseModel):
     entity_type: str
     canonical_value: str
     created: bool
-    case_ids: List[str]
+    case_ids: list[str]
     explanation: str
 
 class RelationshipCreateRequest(BaseModel):
@@ -38,7 +40,8 @@ class RelationshipCreateRequest(BaseModel):
     source_case_id: str = Field(min_length=1)
     confidence: float = Field(ge=0.0, le=1.0)
     why_linked: str = Field(min_length=1)
-    evidence_record_id: Optional[str] = None
+    evidence_record_id: str | None = None
+    evidence: RelationshipEvidence | None = None
     
     @field_validator('relationship_type')
     @classmethod
@@ -65,13 +68,13 @@ class SharedEntity(BaseModel):
 
 class LinkedCase(BaseModel):
     case_id: str
-    shared_entities: List[SharedEntity]
+    shared_entities: list[SharedEntity]
     link_strength: float
     explanation: str
 
 class LinkageResponse(BaseModel):
     case_id: str
-    linked_cases: List[LinkedCase]
+    linked_cases: list[LinkedCase]
 
 class CentralityMetrics(BaseModel):
     degree: float
@@ -90,13 +93,13 @@ class CommunityMember(BaseModel):
 
 class Community(BaseModel):
     community_id: int
-    members: List[CommunityMember]
-    case_ids: List[str]
+    members: list[CommunityMember]
+    case_ids: list[str]
     size: int
     summary: str
 
 class CommunityResponse(BaseModel):
-    communities: List[Community]
+    communities: list[Community]
     method: str
     total_communities: int
 
@@ -105,14 +108,14 @@ class PathStep(BaseModel):
     target: str
     source_label: str = ""
     target_label: str = ""
-    relationship_type: Optional[str] = None
-    confidence: Optional[float] = None
+    relationship_type: str | None = None
+    confidence: float | None = None
 
 class ShortestPathResponse(BaseModel):
     entity_a: str
     entity_b: str
-    path: List[str]
-    steps: List[PathStep]
+    path: list[str]
+    steps: list[PathStep]
     path_length: int
     explanation: str
 

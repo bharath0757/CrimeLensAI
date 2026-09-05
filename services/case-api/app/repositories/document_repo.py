@@ -1,18 +1,18 @@
 import uuid
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
 from app.schemas.document import DocumentResponse, ProcessingStatus
 
 
 class DocumentRepositoryInterface(ABC):
     @abstractmethod
-    async def get_by_id(self, doc_id: str) -> Optional[DocumentResponse]:
+    async def get_by_id(self, doc_id: str) -> DocumentResponse | None:
         pass
 
     @abstractmethod
-    async def list_by_case(self, case_id: str, skip: int = 0, limit: int = 50) -> Tuple[List[DocumentResponse], int]:
+    async def list_by_case(self, case_id: str, skip: int = 0, limit: int = 50) -> tuple[list[DocumentResponse], int]:
         pass
 
     @abstractmethod
@@ -29,7 +29,7 @@ class DocumentRepositoryInterface(ABC):
         pass
 
     @abstractmethod
-    async def update_status(self, doc_id: str, status: ProcessingStatus, error_message: Optional[str] = None) -> Optional[DocumentResponse]:
+    async def update_status(self, doc_id: str, status: ProcessingStatus, error_message: str | None = None) -> DocumentResponse | None:
         pass
 
     @abstractmethod
@@ -37,15 +37,15 @@ class DocumentRepositoryInterface(ABC):
         pass
 
     @abstractmethod
-    async def delete(self, doc_id: str) -> Optional[str]:  # Returns file_path if deleted
+    async def delete(self, doc_id: str) -> str | None:  # Returns file_path if deleted
         pass
 
     @abstractmethod
-    async def search(self, query: str, case_id: Optional[str] = None, skip: int = 0, limit: int = 50) -> Tuple[List[DocumentResponse], int]:
+    async def search(self, query: str, case_id: str | None = None, skip: int = 0, limit: int = 50) -> tuple[list[DocumentResponse], int]:
         pass
 
     @abstractmethod
-    async def count(self, status: Optional[ProcessingStatus] = None) -> int:
+    async def count(self, status: ProcessingStatus | None = None) -> int:
         pass
 
 
@@ -53,15 +53,15 @@ class InMemoryDocumentRepository(DocumentRepositoryInterface):
     """In-memory Document Repository implementation."""
 
     def __init__(self):
-        self._documents: Dict[str, Dict[str, Any]] = {}
+        self._documents: dict[str, dict[str, Any]] = {}
 
-    async def get_by_id(self, doc_id: str) -> Optional[DocumentResponse]:
+    async def get_by_id(self, doc_id: str) -> DocumentResponse | None:
         doc = self._documents.get(doc_id)
         if not doc:
             return None
         return DocumentResponse(**doc)
 
-    async def list_by_case(self, case_id: str, skip: int = 0, limit: int = 50) -> Tuple[List[DocumentResponse], int]:
+    async def list_by_case(self, case_id: str, skip: int = 0, limit: int = 50) -> tuple[list[DocumentResponse], int]:
         filtered = [d for d in self._documents.values() if d["case_id"] == case_id]
         total = len(filtered)
         paginated = filtered[skip : skip + limit]
@@ -78,7 +78,7 @@ class InMemoryDocumentRepository(DocumentRepositoryInterface):
         uploaded_by: str,
     ) -> DocumentResponse:
         doc_id = f"doc-{uuid.uuid4().hex[:8]}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         doc_dict = {
             "id": doc_id,
             "case_id": case_id,
@@ -98,14 +98,13 @@ class InMemoryDocumentRepository(DocumentRepositoryInterface):
         self._documents[doc_id] = doc_dict
         return DocumentResponse(**doc_dict)
 
-    async def update_status(self, doc_id: str, status: ProcessingStatus, error_message: Optional[str] = None) -> Optional[DocumentResponse]:
+    async def update_status(self, doc_id: str, status: ProcessingStatus, error_message: str | None = None) -> DocumentResponse | None:
         doc = self._documents.get(doc_id)
         if not doc:
             return None
         doc["processing_status"] = status
-        if error_message:
-            doc["error_message"] = error_message
-        doc["updated_at"] = datetime.now(timezone.utc)
+        doc["error_message"] = error_message
+        doc["updated_at"] = datetime.now(UTC)
         return DocumentResponse(**doc)
 
     async def update_extraction_counts(self, doc_id: str, entity_count: int, relationship_count: int):
@@ -113,9 +112,9 @@ class InMemoryDocumentRepository(DocumentRepositoryInterface):
         if doc:
             doc["extracted_entity_count"] += entity_count
             doc["extracted_relationship_count"] += relationship_count
-            doc["updated_at"] = datetime.now(timezone.utc)
+            doc["updated_at"] = datetime.now(UTC)
 
-    async def delete(self, doc_id: str) -> Optional[str]:
+    async def delete(self, doc_id: str) -> str | None:
         doc = self._documents.get(doc_id)
         if not doc:
             return None
@@ -123,7 +122,7 @@ class InMemoryDocumentRepository(DocumentRepositoryInterface):
         del self._documents[doc_id]
         return file_path
 
-    async def search(self, query: str, case_id: Optional[str] = None, skip: int = 0, limit: int = 50) -> Tuple[List[DocumentResponse], int]:
+    async def search(self, query: str, case_id: str | None = None, skip: int = 0, limit: int = 50) -> tuple[list[DocumentResponse], int]:
         q = query.lower()
         filtered = list(self._documents.values())
         if case_id:
@@ -136,7 +135,7 @@ class InMemoryDocumentRepository(DocumentRepositoryInterface):
         paginated = filtered[skip : skip + limit]
         return [DocumentResponse(**d) for d in paginated], total
 
-    async def count(self, status: Optional[ProcessingStatus] = None) -> int:
+    async def count(self, status: ProcessingStatus | None = None) -> int:
         if not status:
             return len(self._documents)
         return sum(1 for d in self._documents.values() if d["processing_status"] == status)

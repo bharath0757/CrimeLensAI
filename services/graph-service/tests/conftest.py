@@ -1,9 +1,10 @@
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
-from app.store import InMemoryGraphStore
-from app.models import EntityInput, EntityType, RelationshipInput
-from app.services.graph_service import GraphService
+from app.models import EntityInput, EntityType
 from app.services.analytics_service import AnalyticsService
+from app.services.graph_service import GraphService
+from app.store import InMemoryGraphStore
 
 
 @pytest.fixture

@@ -9,6 +9,9 @@ All tests use realistic FIR-style text.
 
 from __future__ import annotations
 
+import os
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -20,7 +23,11 @@ from app.main import app
 
 @pytest.fixture(scope="module")
 def client():
-    with TestClient(app) as c:
+    token = "extraction-test-service-token-26189"
+    with (
+        patch.dict(os.environ, {"SERVICE_AUTH_TOKEN": token}),
+        TestClient(app, headers={"X-Service-Token": token}) as c,
+    ):
         yield c
 
 

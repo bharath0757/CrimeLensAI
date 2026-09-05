@@ -1,106 +1,51 @@
-from typing import Any
-from fastapi import APIRouter, Depends, HTTPException, status
+"""Administrator-provisioned accounts and one credential-verification path."""
+
+import asyncio
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 
-from app.core.security import create_access_token, verify_password
-from app.schemas.user import UserResponse, UserCreate, Token
-from app.schemas.auth import LoginRequest, RegisterRequest
+from app.api.deps import get_current_user, get_user_repository, require_roles
+from app.core.security import create_access_token, get_password_hash, verify_password
 from app.repositories.user_repo import UserRepositoryInterface
-from app.api.deps import get_user_repository, get_current_user
+from app.schemas.auth import LoginRequest, RegisterRequest
+from app.schemas.user import Token, UserCreate, UserResponse, UserRole
 
 router = APIRouter()
+Users = Annotated[UserRepositoryInterface, Depends(get_user_repository)]
+Admin = Annotated[UserResponse, Depends(require_roles([UserRole.ADMIN]))]
+# A missing account still performs a bcrypt check; never use this as an account hash.
+DUMMY_PASSWORD_HASH = get_password_hash("non-account-timing-check-only")
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, summary="User Registration")
-async def register_user(
-    request: RegisterRequest,
-    user_repo: UserRepositoryInterface = Depends(get_user_repository),
-) -> Any:
-    """Register a new user account."""
-    existing_user = await user_repo.get_by_email(request.email)
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A user with this email address already exists.",
-        )
-
-    user_create = UserCreate(
-        email=request.email,
-        password=request.password,
-        full_name=request.full_name,
-        badge_number=request.badge_number,
-        agency=request.agency,
-    )
-    user = await user_repo.create(user_create)
-    return user
+@router.post("/register", response_model=UserResponse, status_code=201, summary="Provision officer account (Admin)")
+async def register_user(request: RegisterRequest, current_user: Admin, user_repo: Users) -> UserResponse:
+    if await user_repo.get_by_email(request.email):
+        raise HTTPException(status_code=409, detail="A user with this email address already exists.")
+    return await user_repo.create(UserCreate(**request.model_dump()))
 
 
-@router.post("/login", response_model=Token, summary="User Authentication & JWT Issuance (JSON)")
-async def login_json(
-    request: LoginRequest,
-    user_repo: UserRepositoryInterface = Depends(get_user_repository),
-) -> Any:
-    """
-    Authenticate user credentials via JSON request body.
-    Returns access token and user profile.
-    """
-    user = await user_repo.get_by_email(request.email)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    pwd_hash = await user_repo.get_password_hash(request.email)
-    if not pwd_hash or not verify_password(request.password, pwd_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    access_token = create_access_token(
-        subject=user.id,
-        extra_claims={"role": user.role, "email": user.email},
-    )
-
+async def authenticate(email: str, password: str, user_repo: UserRepositoryInterface) -> Token:
+    user = await user_repo.get_by_email(email)
+    password_hash = await user_repo.get_password_hash(email) if user else None
+    valid = await asyncio.to_thread(verify_password, password, password_hash or DUMMY_PASSWORD_HASH)
+    if not valid or not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="Incorrect email or password.", headers={"WWW-Authenticate": "Bearer"})
+    access_token = create_access_token(subject=user.id, extra_claims={"role": user.role, "email": user.email})
     return Token(access_token=access_token, token_type="bearer", user=user)
 
 
-@router.post("/login/form", response_model=Token, summary="OAuth2 Form Login (for Swagger UI / Form submit)")
-async def login_form(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    user_repo: UserRepositoryInterface = Depends(get_user_repository),
-) -> Any:
-    """OAuth2 password flow form login endpoint."""
-    user = await user_repo.get_by_email(form_data.username)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    pwd_hash = await user_repo.get_password_hash(form_data.username)
-    if not pwd_hash or not verify_password(form_data.password, pwd_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    access_token = create_access_token(
-        subject=user.id,
-        extra_claims={"role": user.role, "email": user.email},
-    )
-
-    return Token(access_token=access_token, token_type="bearer", user=user)
+@router.post("/login", response_model=Token, summary="Officer login (JSON)")
+async def login_json(request: LoginRequest, user_repo: Users) -> Token:
+    return await authenticate(request.email, request.password, user_repo)
 
 
-@router.get("/me", response_model=UserResponse, summary="Fetch Current User Profile")
-async def read_current_user(
-    current_user: UserResponse = Depends(get_current_user),
-) -> Any:
-    """Retrieve profile details for the currently authenticated user."""
+@router.post("/login/form", response_model=Token, summary="Officer login (OAuth2 form)")
+async def login_form(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], user_repo: Users) -> Token:
+    return await authenticate(form_data.username, form_data.password, user_repo)
+
+
+@router.get("/me", response_model=UserResponse, summary="Current officer profile")
+async def read_current_user(current_user: Annotated[UserResponse, Depends(get_current_user)]) -> UserResponse:
     return current_user

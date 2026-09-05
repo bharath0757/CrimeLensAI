@@ -80,6 +80,23 @@ def normalize_date(value: str) -> str:
     return " ".join(value.split()).lower()
 
 
+def normalize_compact_identifier(value: str) -> str:
+    """Normalize identity numbers while preserving alphanumeric meaning."""
+    return re.sub(r"[^A-Za-z0-9]", "", value).upper()
+
+
+def normalize_digits(value: str) -> str:
+    return re.sub(r"\D", "", value)
+
+
+def normalize_email(value: str) -> str:
+    return value.strip().lower()
+
+
+def normalize_legal_section(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip().upper()
+
+
 # ------------------------------------------------------------------
 # Dispatcher
 # ------------------------------------------------------------------
@@ -92,6 +109,12 @@ _NORMALIZERS: dict[str, callable] = {
     "LOCATION": normalize_location,
     "ORG": normalize_org,
     "DATE": normalize_date,
+    "AADHAAR": normalize_digits,
+    "PAN": normalize_compact_identifier,
+    "PASSPORT": normalize_compact_identifier,
+    "BANK_ACCOUNT": normalize_digits,
+    "EMAIL": normalize_email,
+    "IPC_SECTION": normalize_legal_section,
 }
 
 

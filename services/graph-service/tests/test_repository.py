@@ -1,8 +1,10 @@
 """Tests for GraphRepository and Neo4jConnectionManager with mocked Neo4j driver."""
 
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
 from app.repositories.graph_repository import GraphRepository
+
 
 class TestGraphRepository:
     @pytest.fixture

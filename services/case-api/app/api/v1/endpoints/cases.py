@@ -1,18 +1,19 @@
-from typing import Any, Optional
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.api.deps import get_case_repository, get_current_user
+from app.repositories.case_repo import CaseRepositoryInterface
 from app.schemas.case import (
-    CaseResponse,
     CaseCreate,
-    CaseUpdate,
-    CaseStatusUpdate,
     CaseListResponse,
-    CaseStatus,
     CasePriority,
+    CaseResponse,
+    CaseStatus,
+    CaseStatusUpdate,
+    CaseUpdate,
 )
 from app.schemas.user import UserResponse, UserRole
-from app.repositories.case_repo import CaseRepositoryInterface
-from app.api.deps import get_case_repository, get_current_user
 
 router = APIRouter()
 
@@ -24,22 +25,21 @@ async def create_case(
     case_repo: CaseRepositoryInterface = Depends(get_case_repository),
 ) -> Any:
     """Create a new crime investigation case."""
-    case = await case_repo.create(case_create, owner_id=current_user.id)
-    return case
+    return await case_repo.create(case_create, owner_id=current_user.id)
 
 
 @router.get("", response_model=CaseListResponse, summary="List Cases")
 async def list_cases(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    case_status: Optional[CaseStatus] = Query(None, alias="status"),
-    priority: Optional[CasePriority] = None,
-    search: Optional[str] = None,
+    case_status: CaseStatus | None = Query(None, alias="status"),
+    priority: CasePriority | None = None,
+    search: str | None = None,
     current_user: UserResponse = Depends(get_current_user),
     case_repo: CaseRepositoryInterface = Depends(get_case_repository),
 ) -> Any:
     """List cases accessible to the investigator with optional filters and pagination."""
-    owner_id = None if current_user.role in [UserRole.ADMIN, UserRole.LEAD_INVESTIGATOR] else current_user.id
+    owner_id = None if current_user.role == UserRole.ADMIN else current_user.id
     items, total = await case_repo.list_cases(
         skip=skip,
         limit=limit,
@@ -62,10 +62,12 @@ async def get_case(
     if not case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found.")
     
-    # Access check
-    if current_user.role not in [UserRole.ADMIN, UserRole.LEAD_INVESTIGATOR]:
-        if case.owner_id != current_user.id and current_user.id not in case.assigned_investigator_ids:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this case.")
+    if (
+        current_user.role != UserRole.ADMIN
+        and case.owner_id != current_user.id
+        and current_user.id not in case.assigned_investigator_ids
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this case.")
             
     return case
 
@@ -82,11 +84,10 @@ async def update_case(
     if not case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found.")
         
-    if current_user.role not in [UserRole.ADMIN, UserRole.LEAD_INVESTIGATOR] and case.owner_id != current_user.id:
+    if current_user.role != UserRole.ADMIN and case.owner_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to edit this case.")
 
-    updated_case = await case_repo.update(case_id, case_update)
-    return updated_case
+    return await case_repo.update(case_id, case_update)
 
 
 @router.patch("/{case_id}/status", response_model=CaseResponse, summary="Change Case Status")
@@ -101,11 +102,10 @@ async def update_case_status(
     if not case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found.")
 
-    if current_user.role not in [UserRole.ADMIN, UserRole.LEAD_INVESTIGATOR] and case.owner_id != current_user.id:
+    if current_user.role != UserRole.ADMIN and case.owner_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to update status.")
 
-    updated_case = await case_repo.update(case_id, CaseUpdate(status=status_update.status))
-    return updated_case
+    return await case_repo.update(case_id, CaseUpdate(status=status_update.status))
 
 
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete / Archive Case")
@@ -123,4 +123,3 @@ async def delete_case(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only Admins or Case Owners can delete a case.")
 
     await case_repo.delete(case_id)
-    return None

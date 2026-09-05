@@ -3,9 +3,9 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException
 
+from app.api.batches import router as batch_router
 from app.api.routes import router as api_router
 from app.core.config import get_settings
 from app.core.neo4j import neo4j_manager
@@ -24,8 +24,10 @@ async def lifespan(application: FastAPI):
             from app.api.routes import store
             if hasattr(store, "hydrate"):
                 store.hydrate()
-        except Exception as exc:
-            logger.warning("Neo4j connection failed at startup: %s", exc)
+        except Exception:
+            neo4j_manager.close()
+            logger.exception("Neo4j startup failed; graph service cannot accept writes")
+            raise
     yield
     if settings.GRAPH_BACKEND.lower() == "neo4j":
         neo4j_manager.close()
@@ -45,24 +47,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 app.include_router(api_router)
-
-@app.on_event("startup")
-async def startup_event():
-    from app.core.database import driver
-    async with driver.session() as session:
-        # Priority 1 constraint for duplicate entity resolution
-        await session.run("CREATE CONSTRAINT entity_identity IF NOT EXISTS FOR (e:Entity) REQUIRE (e.name, e.type) IS UNIQUE")
-        # Ensure Case ID constraint
-        await session.run("CREATE CONSTRAINT case_identity IF NOT EXISTS FOR (c:Case) REQUIRE c.id IS UNIQUE")
+app.include_router(batch_router)
 
 @app.get("/health", tags=["Health"])
 async def health_check():
@@ -72,13 +58,12 @@ async def health_check():
 
     neo4j_status = "not_configured"
     if settings.GRAPH_BACKEND.lower() == "neo4j":
-        try:
-            connected = neo4j_manager.verify_connectivity()
-            neo4j_status = "connected" if connected else "unavailable"
-        except Exception:
-            neo4j_status = "unavailable"
+        connected = neo4j_manager.verify_connectivity()
+        neo4j_status = "connected" if connected else "unavailable"
 
-    overall = "healthy" if neo4j_status != "unavailable" else "degraded"
+    if neo4j_status == "unavailable":
+        raise HTTPException(503, "Neo4j unavailable")
+    overall = "healthy"
 
     return {
         "status": overall,

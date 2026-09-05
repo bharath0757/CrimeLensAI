@@ -1,17 +1,17 @@
-from enum import Enum
-from typing import List, Optional
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict
+from enum import StrEnum
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class CaseStatus(str, Enum):
+class CaseStatus(StrEnum):
     OPEN = "OPEN"
     IN_PROGRESS = "IN_PROGRESS"
     CLOSED = "CLOSED"
     ARCHIVED = "ARCHIVED"
 
 
-class CasePriority(str, Enum):
+class CasePriority(StrEnum):
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
@@ -22,21 +22,21 @@ class CaseBase(BaseModel):
     title: str = Field(..., min_length=3, max_length=150)
     description: str = Field(..., max_length=2000)
     priority: CasePriority = CasePriority.MEDIUM
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
 
 
 class CaseCreate(CaseBase):
-    case_number: Optional[str] = None
-    assigned_investigator_ids: List[str] = Field(default_factory=list)
+    case_number: str | None = None
+    assigned_investigator_ids: list[str] = Field(default_factory=list)
 
 
 class CaseUpdate(BaseModel):
-    title: Optional[str] = Field(None, min_length=3, max_length=150)
-    description: Optional[str] = Field(None, max_length=2000)
-    status: Optional[CaseStatus] = None
-    priority: Optional[CasePriority] = None
-    assigned_investigator_ids: Optional[List[str]] = None
-    tags: Optional[List[str]] = None
+    title: str | None = Field(None, min_length=3, max_length=150)
+    description: str | None = Field(None, max_length=2000)
+    status: CaseStatus | None = None
+    priority: CasePriority | None = None
+    assigned_investigator_ids: list[str] | None = None
+    tags: list[str] | None = None
 
 
 class CaseStatusUpdate(BaseModel):
@@ -48,7 +48,7 @@ class CaseResponse(CaseBase):
     case_number: str
     status: CaseStatus
     owner_id: str
-    assigned_investigator_ids: List[str] = Field(default_factory=list)
+    assigned_investigator_ids: list[str] = Field(default_factory=list)
     document_count: int = 0
     entity_count: int = 0
     relationship_count: int = 0
@@ -62,4 +62,4 @@ class CaseListResponse(BaseModel):
     total: int
     skip: int
     limit: int
-    items: List[CaseResponse]
+    items: list[CaseResponse]

@@ -12,13 +12,13 @@ import httpx
 from .models import EntityInput, FirAnalysisRequest
 from .store import InMemoryGraphStore
 
-
 BatchExtractor = Callable[[list[dict[str, Any]]], dict[str, Any]]
 
 
 class ExtractionServiceClient:
     def __init__(self, base_url: str | None = None, timeout_seconds: float = 30.0) -> None:
-        self.base_url = (base_url or os.getenv("EXTRACTION_SERVICE_URL", "http://extraction:8001")).rstrip("/")
+        configured = (base_url or os.getenv("EXTRACTION_SERVICE_URL", "http://extraction:8001")).strip().rstrip("/")
+        self.base_url = configured if "://" in configured else f"http://{configured}"
         self.timeout_seconds = timeout_seconds
 
     def extract_batch(self, firs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -26,6 +26,7 @@ class ExtractionServiceClient:
             response = httpx.post(
                 f"{self.base_url}/api/v1/extract/batch",
                 json={"firs": firs},
+                headers={"X-Service-Token": os.getenv("SERVICE_AUTH_TOKEN", "")},
                 timeout=self.timeout_seconds,
             )
             response.raise_for_status()

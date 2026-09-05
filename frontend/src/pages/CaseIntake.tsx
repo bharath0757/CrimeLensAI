@@ -1,370 +1,234 @@
-/**
- * CrimeLensAI — Case Intake Page
- *
- * Case intake form with live entity extraction preview.
- * As the investigator types or pastes FIR text, the extraction
- * service highlights entities in real-time.
- */
+import { useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
+import { Link } from "react-router-dom";
+import { api, errorMessage } from "../lib/api";
+import type { CaseRecord, ExtractionPreview } from "../lib/contracts";
+import { submitIntake } from "../lib/intake";
+import type { IntakeCheckpoint } from "../lib/intake";
 
-import { useState } from "react";
-import { api } from "../lib/api";
-
-type EntityType = "PERSON" | "PHONE" | "VEHICLE" | "UPI_ID" | "LOCATION" | "ORG";
-
-interface ExtractedEntity {
-  id: string;
-  type: EntityType;
-  value: string;
-  confidence: number;
-}
+const panel = "rounded-xl border border-surface-200 bg-white p-6 dark:border-surface-800 dark:bg-surface-900";
+const input = "mt-2 w-full rounded-lg border border-surface-300 bg-white p-3 text-surface-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-60 dark:border-surface-700 dark:bg-surface-800 dark:text-white";
+const button = "rounded-lg bg-primary-600 px-5 py-3 font-medium text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50";
+const accepted = ".txt,.pdf,.docx,.csv,.json,.log";
+const emptyMetadata = { title: "", firNumber: "", district: "", filedDate: "", category: "" };
 
 export function CaseIntake() {
-  const [metadata, setMetadata] = useState({
-    title: "",
-    firNumber: "",
-    district: "",
-    filedDate: "",
-    category: "",
-  });
+  const [metadata, setMetadata] = useState(emptyMetadata);
   const [firText, setFirText] = useState("");
-  const [isExtracting, setIsExtracting] = useState(false);
-  const [extractedEntities, setExtractedEntities] = useState<ExtractedEntity[]>([]);
-  const [extractionStatus, setExtractionStatus] = useState<"idle" | "loading" | "success" | "error" | "empty">("idle");
-  const [extractionError, setExtractionError] = useState<string | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [preview, setPreview] = useState<ExtractionPreview | null>(null);
+  const [previewSource, setPreviewSource] = useState("");
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const [visibleCount, setVisibleCount] = useState(100);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [error, setError] = useState("");
+  const [savedCase, setSavedCase] = useState<CaseRecord | null>(null);
+  const checkpoint = useRef<IntakeCheckpoint>({ documents: {}, completed: [] });
+  const submitting = useRef(false);
+  const previewRequest = useRef<AbortController | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const locked = busy || Boolean(checkpoint.current.caseId);
+  const valid = metadata.title.trim().length >= 3 && metadata.firNumber.trim() && metadata.district.trim()
+    && (firText.trim() || files.length > 0);
+  // Python source offsets count Unicode code points, not JavaScript UTF-16 units.
+  const previewCharacters = preview ? Array.from(preview.text) : [];
 
-  const [files, setFiles] = useState<Record<string, File | null>>({
-    callRecords: null,
-    financialLogs: null,
-    locationData: null,
-  });
+  useEffect(() => () => previewRequest.current?.abort(), []);
 
-  const [submitStatus, setSubmitStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  function clearPreview() {
+    previewRequest.current?.abort();
+    previewRequest.current = null;
+    setPreviewBusy(false);
+    setPreview(null);
+    setPreviewError("");
+    setVisibleCount(100);
+  }
 
-  const handleMetadataChange = (field: string, value: string) => {
-    setMetadata((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const handleFileChange = (key: string, file: File | null) => {
-    setFiles((prev) => ({ ...prev, [key]: file }));
-  };
-
-  const handleExtract = async () => {
-    setIsExtracting(true);
-    setExtractionStatus("loading");
-    setExtractionError(null);
-    
-    // The backend /extract API contract is missing from the API gateway
-    setTimeout(() => {
-      setExtractionStatus("error");
-      setExtractionError("Extraction failed. Backend /extract API endpoint is unavailable.");
-      setExtractedEntities([]);
-      setIsExtracting(false);
-    }, 500);
-  };
-
-  const isFormValid = () => {
-    return (
-      metadata.title.trim() !== "" &&
-      metadata.firNumber.trim() !== "" &&
-      metadata.district.trim() !== "" &&
-      firText.trim() !== ""
-    );
-  };
-
-  const handleSubmit = async () => {
-    if (!isFormValid()) return;
-
-    setSubmitStatus("submitting");
-    setSubmitError(null);
-
+  async function extract(file?: File) {
+    clearPreview();
+    const controller = new AbortController();
+    previewRequest.current = controller;
+    setPreviewBusy(true);
+    setPreviewSource(file ? file.name : "Pasted FIR narrative");
     try {
-      const payload = {
-        ...metadata,
-        firText,
-        entities: extractedEntities,
-        // In a real scenario, files might be uploaded first and we send file IDs/URLs,
-        // or we use multipart/form-data. Since api.ts cases.create accepts JSON `data: unknown`,
-        // we'll just pass file names as a placeholder for the backend contract.
-        files: Object.entries(files)
-          .filter(([_, file]) => file !== null)
-          .map(([key, file]) => ({ type: key, name: file?.name })),
-      };
-
-      await api.cases.create(payload);
-      setSubmitStatus("success");
-      
-      // Optional: reset form after success
-      // setMetadata({ title: "", firNumber: "", district: "", filedDate: "", category: "" });
-      // setFirText("");
-      // setExtractedEntities([]);
-      // setFiles({ callRecords: null, financialLogs: null, locationData: null });
-      // setExtractionStatus("idle");
-    } catch (err: any) {
-      setSubmitStatus("error");
-      setSubmitError(err.message || "Failed to submit case.");
+      const result = file
+        ? await api.extraction.previewFile(file, controller.signal)
+        : await api.extraction.preview(firText, controller.signal);
+      if (!controller.signal.aborted) setPreview(result);
+    } catch (failure) {
+      if (!controller.signal.aborted) setPreviewError(errorMessage(failure));
+    } finally {
+      if (!controller.signal.aborted) setPreviewBusy(false);
     }
-  };
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!valid || submitting.current || savedCase) return;
+    submitting.current = true;
+    setBusy(true);
+    setError("");
+    clearPreview();
+    try {
+      const evidence = files.map((file, index) => ({ key: `file-${index}`, file }));
+      if (firText.trim()) evidence.unshift({
+        key: "narrative", file: new File([firText], "fir-narrative.txt", { type: "text/plain;charset=utf-8" }),
+      });
+      const result = await submitIntake({
+        title: metadata.title.trim(), case_number: metadata.firNumber.trim(),
+        // Full text is retained in the evidence file; metadata has a 2,000-character limit.
+        description: firText.trim().slice(0, 2000) || `FIR evidence uploaded for ${metadata.district.trim()}.`,
+        tags: [metadata.category, `district:${metadata.district.trim()}`,
+          metadata.filedDate ? `filed:${metadata.filedDate}` : ""].filter(Boolean),
+      }, evidence, checkpoint.current, setProgress);
+      setSavedCase(result);
+      setProgress("All selected documents have completed extraction and graph synchronization.");
+    } catch (failure) {
+      setError(errorMessage(failure));
+      setProgress("");
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
+  }
+
+  function startAnother() {
+    checkpoint.current = { documents: {}, completed: [] };
+    setSavedCase(null);
+    setMetadata(emptyMetadata);
+    setFirText("");
+    setFiles([]);
+    setError("");
+    setProgress("");
+    clearPreview();
+    if (fileInput.current) fileInput.current.value = "";
+  }
 
   return (
-    <div className="space-y-8">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-surface-900 dark:text-white transition-colors">Case Intake</h1>
-        <p className="text-surface-600 dark:text-surface-200 mt-1 transition-colors">
-          Submit new case data for entity extraction and cross-case analysis.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Input Form */}
-        <div className="space-y-6">
-          {/* Case Metadata */}
-          <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl p-6 shadow-sm dark:shadow-none space-y-4 transition-colors">
-            <h2 className="text-lg font-semibold text-surface-900 dark:text-white mb-2 transition-colors">Case Details</h2>
-            
-            <div>
-              <label className="block text-sm font-medium text-surface-600 dark:text-surface-200 mb-2 transition-colors">
-                Case Title *
+    <div className="space-y-6 text-surface-900 dark:text-white">
+      <header>
+        <h1 className="text-2xl font-bold">Case Intake</h1>
+        <p className="mt-2 text-surface-600 dark:text-surface-300">Read a new FIR, review extracted candidates, and save its evidence for cross-case analysis.</p>
+      </header>
+      <form onSubmit={submit} className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2" aria-busy={busy}>
+        <div className="min-w-0 space-y-6">
+          <fieldset disabled={locked} className={`${panel} space-y-4`}>
+            <legend className="sr-only">Case details</legend>
+            <h2 className="text-lg font-semibold">Case details</h2>
+            <label className="block" htmlFor="case-title">Case title *
+              <input id="case-title" className={input} required minLength={3} maxLength={150} value={metadata.title}
+                onChange={e => setMetadata({ ...metadata, title: e.target.value })} />
+            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label htmlFor="fir-number">FIR number *
+                <input id="fir-number" required maxLength={100} className={input} value={metadata.firNumber}
+                  onChange={e => setMetadata({ ...metadata, firNumber: e.target.value })} />
               </label>
-              <input
-                type="text"
-                value={metadata.title}
-                onChange={(e) => handleMetadataChange("title", e.target.value)}
-                placeholder="e.g., Missing Person Report — Lucknow District"
-                className="w-full px-4 py-3 bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 rounded-lg text-surface-900 dark:text-white placeholder-surface-400 focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/20 transition-colors shadow-sm dark:shadow-none"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-surface-600 dark:text-surface-200 mb-2 transition-colors">
-                  FIR Number *
-                </label>
-                <input
-                  type="text"
-                  value={metadata.firNumber}
-                  onChange={(e) => handleMetadataChange("firNumber", e.target.value)}
-                  placeholder="e.g., FIR-2023-0145"
-                  className="w-full px-4 py-2 bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 rounded-lg text-surface-900 dark:text-white placeholder-surface-400 focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/20 transition-colors shadow-sm dark:shadow-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-surface-600 dark:text-surface-200 mb-2 transition-colors">
-                  District *
-                </label>
-                <input
-                  type="text"
-                  value={metadata.district}
-                  onChange={(e) => handleMetadataChange("district", e.target.value)}
-                  placeholder="e.g., Lucknow"
-                  className="w-full px-4 py-2 bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 rounded-lg text-surface-900 dark:text-white placeholder-surface-400 focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/20 transition-colors shadow-sm dark:shadow-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-surface-600 dark:text-surface-200 mb-2 transition-colors">
-                  Filed Date
-                </label>
-                <input
-                  type="date"
-                  value={metadata.filedDate}
-                  onChange={(e) => handleMetadataChange("filedDate", e.target.value)}
-                  className="w-full px-4 py-2 bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 rounded-lg text-surface-900 dark:text-white placeholder-surface-400 focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/20 transition-colors shadow-sm dark:shadow-none dark:[&::-webkit-calendar-picker-indicator]:invert"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-surface-600 dark:text-surface-200 mb-2 transition-colors">
-                  Category
-                </label>
-                <select
-                  value={metadata.category}
-                  onChange={(e) => handleMetadataChange("category", e.target.value)}
-                  className="w-full px-4 py-2 bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 rounded-lg text-surface-900 dark:text-white placeholder-surface-400 focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/20 transition-colors shadow-sm dark:shadow-none"
-                >
-                  <option value="">Select a category</option>
-                  <option value="missing_person">Missing Person</option>
-                  <option value="financial_fraud">Financial Fraud</option>
-                  <option value="cyber_crime">Cyber Crime</option>
+              <label htmlFor="district">District *
+                <input id="district" required maxLength={100} className={input} value={metadata.district}
+                  onChange={e => setMetadata({ ...metadata, district: e.target.value })} />
+              </label>
+              <label htmlFor="filed-date">Filed date
+                <input id="filed-date" type="date" className={input} value={metadata.filedDate}
+                  onChange={e => setMetadata({ ...metadata, filedDate: e.target.value })} />
+              </label>
+              <label htmlFor="category">Category
+                <select id="category" className={input} value={metadata.category}
+                  onChange={e => setMetadata({ ...metadata, category: e.target.value })}>
+                  <option value="">Select category</option>
+                  <option value="missing_person">Missing person</option>
+                  <option value="financial_fraud">Financial fraud</option>
+                  <option value="cyber_crime">Cyber crime</option>
                   <option value="theft">Theft</option>
                   <option value="other">Other</option>
                 </select>
-              </div>
+              </label>
             </div>
-          </div>
-
-          {/* FIR Text */}
-          <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl p-6 shadow-sm dark:shadow-none transition-colors">
-            <label className="block text-sm font-medium text-surface-600 dark:text-surface-200 mb-2 transition-colors">
-              FIR Text / Case Narrative *
-            </label>
-            <textarea
-              value={firText}
-              onChange={(e) => setFirText(e.target.value)}
-              placeholder="Paste the FIR text here. The system will extract entities (persons, phone numbers, vehicles, UPI IDs, locations) in real-time..."
-              rows={10}
-              className="w-full px-4 py-3 bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 rounded-lg text-surface-900 dark:text-white placeholder-surface-400 focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/20 transition-colors resize-none font-mono text-sm shadow-sm dark:shadow-none"
-            />
-            <div className="flex justify-between items-center mt-3">
-              <span className="text-xs text-surface-500 dark:text-surface-200 transition-colors">
-                {firText.length} characters
-              </span>
-              <button
-                onClick={handleExtract}
-                disabled={!firText.trim() || isExtracting}
-                className="px-6 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-surface-200 disabled:text-surface-500 dark:disabled:bg-surface-700 dark:disabled:text-surface-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
-              >
-                {isExtracting ? "Extracting..." : "🔍 Extract Entities"}
+          </fieldset>
+          <section className={panel}>
+            <label htmlFor="fir-text" className="font-semibold">FIR narrative</label>
+            <p id="narrative-help" className="mt-2 text-sm text-surface-600 dark:text-surface-300">Paste text, upload documents below, or provide both. The full narrative is retained as a source document.</p>
+            <textarea id="fir-text" aria-describedby="narrative-help" className={`${input} font-mono text-sm`} rows={10}
+              maxLength={500000} disabled={locked} value={firText}
+              onChange={e => { setFirText(e.target.value); clearPreview(); }} />
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <span className="text-xs text-surface-500 dark:text-surface-300">{firText.length.toLocaleString()} / 500,000 characters</span>
+              <button type="button" className={button} onClick={() => extract()} disabled={!firText.trim() || previewBusy || busy}>Preview narrative</button>
+            </div>
+          </section>
+          <section className={`${panel} space-y-3`}>
+            <label htmlFor="fir-files" className="font-semibold">FIR documents and supporting evidence</label>
+            <p id="file-help" className="text-sm text-surface-600 dark:text-surface-300">TXT, text-based PDF, DOCX, CSV, JSON or LOG. Up to 10 files, 50 MB each. Scanned documents require OCR before upload. CSV previews extract text only; they do not create call or transfer relationships.</p>
+            <input ref={fileInput} id="fir-files" aria-describedby="file-help" type="file" multiple accept={accepted}
+              disabled={locked} className="w-full min-w-0 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary-600 file:p-3 file:text-white"
+              onChange={e => {
+                const selected = Array.from(e.target.files || []);
+                clearPreview();
+                if (selected.length > 10 || selected.some(file => file.size > 50 * 1024 * 1024 || !accepted.split(",").some(ext => file.name.toLowerCase().endsWith(ext)))) {
+                  setError("Choose up to 10 supported files, each no larger than 50 MB.");
+                  e.target.value = "";
+                  setFiles([]);
+                } else { setFiles(selected); setError(""); }
+              }} />
+            <ul className="space-y-2">
+              {files.map((file, index) => <li key={`${index}-${file.name}`} className="flex items-center justify-between gap-3 rounded-lg bg-surface-100 p-3 dark:bg-surface-800">
+                <span className="min-w-0 break-all text-sm">{file.name} ({Math.ceil(file.size / 1024)} KB)</span>
+                <button type="button" className="shrink-0 rounded px-3 py-2 text-primary-600 underline dark:text-primary-300 disabled:opacity-50" disabled={previewBusy || busy} onClick={() => extract(file)} aria-label={`Preview ${file.name}`}>Preview</button>
+              </li>)}
+            </ul>
+          </section>
+        </div>
+        <div className="min-w-0 space-y-6">
+          <section className={`${panel} space-y-4`} aria-busy={previewBusy} aria-label="Extraction preview">
+            <h2 className="text-lg font-semibold">Extraction preview</h2>
+            <p className="text-sm text-surface-600 dark:text-surface-300">Candidates, not findings of guilt. Confidence is a heuristic, not a probability. An officer must review identities and connections.</p>
+            {previewBusy && <div role="status" className="animate-pulse rounded-lg bg-surface-100 p-8 dark:bg-surface-800">Reading and extracting entities…</div>}
+            {previewError && <p role="alert" className="rounded-lg border border-red-400 p-3 text-red-700 dark:text-red-300">{previewError}</p>}
+            {!preview && !previewBusy && !previewError && <p className="rounded-lg border border-dashed border-surface-400 p-8 text-center text-surface-600 dark:text-surface-300">Choose Preview to inspect a narrative or document. A preview does not save a case.</p>}
+            {preview && <>
+              <p role="status" className="break-words text-sm">{preview.entities.length} mentions in {previewSource}. Model: {preview.model}.</p>
+              {preview.warnings.length > 0 && <ul className="rounded-lg border border-amber-400 p-3 text-sm text-amber-800 dark:text-amber-200">{preview.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul>}
+              {preview.entities.length === 0 && <p>No entities found. You can still save this FIR for investigation.</p>}
+              <ul className="max-h-[32rem] space-y-3 overflow-y-auto">
+                {preview.entities.slice(0, visibleCount).map((entity, i) => <li key={`${entity.entity_id}-${i}`} className="rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="min-w-0 break-all font-medium">{entity.value}</span>
+                    <span className="shrink-0 text-sm">{Math.round(entity.confidence * 100)}%</span>
+                  </div>
+                  <p className="mt-1 text-xs text-surface-600 dark:text-surface-300">{entity.entity_type} · Characters {entity.start_offset}–{entity.end_offset}</p>
+                  <p className="mt-2 break-words font-mono text-xs text-surface-600 dark:text-surface-300">{previewCharacters.slice(Math.max(0, entity.start_offset - 40), entity.end_offset + 40).join("")}</p>
+                </li>)}
+              </ul>
+              {preview.entities.length > visibleCount && <button type="button" className={button} onClick={() => setVisibleCount(count => count + 100)}>Show more mentions</button>}
+            </>}
+          </section>
+          <section className={`${panel} space-y-4`}>
+            {error && <div role="alert" className="rounded-lg border border-red-400 p-4 text-red-700 dark:text-red-300">
+              <p>{error}</p>
+              {checkpoint.current.caseId && <p className="mt-2 break-all text-sm">Case {checkpoint.current.caseId} is saved. Keep this page open and retry to continue its unfinished documents.</p>}
+            </div>}
+            {progress && <p role="status" className="text-sm">{progress}</p>}
+            {savedCase ? <div className="space-y-3">
+              <h2 className="text-lg font-semibold">Case saved and processed</h2>
+              <p>{savedCase.case_number}: {savedCase.document_count} documents, {savedCase.entity_count} extracted entities.</p>
+              <p className="text-sm text-surface-600 dark:text-surface-300">Open the case in the dashboard to review candidate connections. Evidence integrity is checked separately in Audit Trail.</p>
+              <div className="flex flex-wrap gap-4">
+                <Link className="text-primary-600 underline dark:text-primary-300" to="/dashboard">Open dashboard</Link>
+                <Link className="text-primary-600 underline dark:text-primary-300" to="/audit">Open audit trail</Link>
+              </div>
+              <button type="button" onClick={startAnother} className={button}>Start another case</button>
+            </div> : <>
+              <p className="text-sm text-surface-600 dark:text-surface-300">Saving uploads the actual documents, extracts their entities, and waits for graph synchronization. Preview results are never used as trusted evidence.</p>
+              <button type="submit" className={`${button} w-full`} disabled={!valid || busy || previewBusy}>
+                {busy ? "Processing evidence…" : checkpoint.current.caseId ? "Retry unfinished documents" : "Save and analyze case"}
               </button>
-            </div>
-            
-            {extractionStatus === "error" && (
-              <div className="mt-3 text-sm text-danger-700 bg-danger-50 border border-danger-200 dark:text-danger-500 dark:bg-danger-500/10 dark:border-danger-500/20 rounded-lg p-3 transition-colors">
-                {extractionError}
-              </div>
-            )}
-            {extractionStatus === "empty" && (
-              <div className="mt-3 text-sm text-warning-700 bg-warning-50 border border-warning-200 dark:text-warning-500 dark:bg-warning-500/10 dark:border-warning-500/20 rounded-lg p-3 transition-colors">
-                No entities found in the provided text.
-              </div>
-            )}
-          </div>
-
-          {/* Additional Data Sources */}
-          <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl p-6 shadow-sm dark:shadow-none transition-colors">
-            <h3 className="text-sm font-medium text-surface-600 dark:text-surface-200 mb-4 transition-colors">
-              Additional Data Sources (Optional)
-            </h3>
-            <div className="space-y-4">
-              {[
-                { key: "callRecords", label: "Call Records (CSV)" },
-                { key: "financialLogs", label: "Financial Transaction Logs" },
-                { key: "locationData", label: "Location Data" },
-              ].map(({ key, label }) => (
-                <div key={key}>
-                  <label className="block text-xs text-surface-600 dark:text-surface-200 mb-1 transition-colors">
-                    {label}
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="file"
-                      onChange={(e) => handleFileChange(key, e.target.files ? e.target.files[0] : null)}
-                      className="flex-1 text-sm text-surface-600 dark:text-surface-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-surface-50 file:text-surface-900 hover:file:bg-surface-100 dark:file:bg-surface-800 dark:file:text-surface-200 dark:hover:file:bg-surface-700 file:cursor-pointer transition-colors"
-                    />
-                    {files[key] && (
-                      <span className="text-xs text-success-700 bg-success-100 dark:text-success-500 dark:bg-success-500/10 px-2 py-1 rounded transition-colors">
-                        Selected
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+            </>}
+          </section>
         </div>
-
-        {/* Live Extraction Preview & Submission */}
-        <div className="space-y-6">
-          <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl p-6 shadow-sm dark:shadow-none transition-colors">
-            <h2 className="text-lg font-semibold text-surface-900 dark:text-white mb-4 transition-colors">
-              🔍 Live Extraction Preview
-            </h2>
-            <div className="space-y-4">
-              <p className="text-sm text-surface-600 dark:text-surface-200 transition-colors">
-                Entities will appear here as they are extracted from the input text.
-                Each entity shows its type, confidence score, and source position.
-              </p>
-
-              {/* Entity type legend */}
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { type: "PERSON", color: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30" },
-                  { type: "PHONE", color: "bg-green-100 text-green-700 border-green-200 dark:bg-green-500/20 dark:text-green-300 dark:border-green-500/30" },
-                  { type: "VEHICLE", color: "bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-500/20 dark:text-yellow-300 dark:border-yellow-500/30" },
-                  { type: "UPI_ID", color: "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30" },
-                  { type: "LOCATION", color: "bg-red-100 text-red-700 border-red-200 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/30" },
-                  { type: "ORG", color: "bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/30" },
-                ].map(({ type, color }) => (
-                  <span
-                    key={type}
-                    className={`px-2 py-1 rounded text-xs font-medium border ${color} transition-colors`}
-                  >
-                    {type}
-                  </span>
-                ))}
-              </div>
-
-              {/* Extraction results display */}
-              <div className="border-t border-surface-200 dark:border-surface-800 pt-4 transition-colors">
-                {extractionStatus === "success" && extractedEntities.length > 0 ? (
-                  <div className="space-y-3">
-                    {extractedEntities.map((entity) => (
-                      <div key={entity.id} className="flex items-center justify-between p-3 bg-white dark:bg-surface-800 rounded-lg border border-surface-200 dark:border-surface-700 shadow-sm dark:shadow-none transition-colors">
-                        <div>
-                          <p className="text-sm font-medium text-surface-900 dark:text-white transition-colors">{entity.value}</p>
-                          <span className="text-xs text-surface-500 dark:text-surface-400 transition-colors">{entity.type}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="w-16 h-1.5 bg-surface-200 dark:bg-surface-700 rounded-full overflow-hidden transition-colors">
-                            <div 
-                              className="h-full bg-primary-500" 
-                              style={{ width: `${entity.confidence * 100}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-surface-600 dark:text-surface-200 transition-colors">
-                            {Math.round(entity.confidence * 100)}%
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-60 border-2 border-dashed border-surface-300 dark:border-surface-700 rounded-lg bg-surface-50/50 dark:bg-surface-800/50 transition-colors">
-                    <div className="text-center text-surface-500 dark:text-surface-200 transition-colors">
-                      <p className="text-3xl mb-2">{isExtracting ? "⏳" : "📋"}</p>
-                      <p className="text-sm">
-                        {isExtracting 
-                          ? "Extracting entities..." 
-                          : firText.trim()
-                            ? "Click 'Extract Entities' to preview results"
-                            : "Enter FIR text to begin extraction"}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Submission Feedback */}
-          {submitStatus === "success" && (
-            <div className="p-4 bg-success-50 text-success-700 border border-success-200 dark:bg-success-500/10 dark:border-success-500/20 dark:text-success-500 rounded-xl transition-colors">
-              <h3 className="font-medium mb-1">Case Submitted Successfully</h3>
-              <p className="text-sm opacity-90">The case data has been recorded and is ready for analysis.</p>
-            </div>
-          )}
-          {submitStatus === "error" && (
-            <div className="p-4 bg-danger-50 text-danger-700 border border-danger-200 dark:bg-danger-500/10 dark:border-danger-500/20 dark:text-danger-500 rounded-xl transition-colors">
-              <h3 className="font-medium mb-1">Submission Failed</h3>
-              <p className="text-sm opacity-90">{submitError}</p>
-            </div>
-          )}
-
-          {/* Submit Case Button */}
-          <button
-            onClick={handleSubmit}
-            disabled={!isFormValid() || submitStatus === "submitting"}
-            className="w-full px-6 py-4 bg-primary-600 hover:bg-primary-700 disabled:bg-surface-200 disabled:text-surface-500 dark:disabled:bg-surface-700 dark:disabled:text-surface-400 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-colors text-lg"
-          >
-            {submitStatus === "submitting" ? "Submitting Case..." : "Submit Case for Analysis"}
-          </button>
-          
-          {!isFormValid() && (
-            <p className="text-xs text-center text-surface-500 dark:text-surface-400 transition-colors">
-              Fill in all required fields (*) to submit.
-            </p>
-          )}
-        </div>
-      </div>
+      </form>
+      <Link className="text-primary-600 underline dark:text-primary-300" to="/evidence">Import CDR or transaction CSV into an existing case</Link>
     </div>
   );
 }

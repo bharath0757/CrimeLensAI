@@ -39,10 +39,10 @@ from app.extractors.normalizers import normalize
 from app.models.schemas import ExtractedEntityResponse, ResolvedGroup
 
 # Types where normalized_value equality is sufficient for grouping
-_EXACT_TYPES = {"PHONE", "VEHICLE", "UPI_ID"}
+_EXACT_TYPES = {"PHONE", "VEHICLE", "UPI_ID", "AADHAAR", "PAN", "PASSPORT", "BANK_ACCOUNT", "EMAIL"}
 
 # Types excluded from identity resolution (contextual, not identities)
-_SKIP_TYPES = {"DATE"}
+_SKIP_TYPES = {"DATE", "IPC_SECTION"}
 
 
 def _make_canonical_id(entity_type: str, normalized_value: str) -> str:
@@ -53,8 +53,7 @@ def _make_canonical_id(entity_type: str, normalized_value: str) -> str:
     types never collide.
     """
     key = f"{entity_type}:{normalized_value}"
-    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
-    return digest
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
 
 def _pick_canonical(mentions: list[ExtractedEntityResponse]) -> str:

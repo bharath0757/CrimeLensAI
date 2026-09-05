@@ -1,6 +1,7 @@
-def test_register_user_success(client):
+def test_register_user_success(client, admin_auth_headers):
     response = client.post(
         "/api/v1/auth/register",
+        headers=admin_auth_headers,
         json={
             "email": "new_detective@crimelens.ai",
             "password": "SecurePassword123!",
@@ -15,16 +16,17 @@ def test_register_user_success(client):
     assert "password" not in data
 
 
-def test_register_duplicate_email(client):
+def test_register_duplicate_email(client, admin_auth_headers):
     response = client.post(
         "/api/v1/auth/register",
+        headers=admin_auth_headers,
         json={
             "email": "admin@crimelens.ai",
             "password": "Password123!",
             "full_name": "Duplicate Admin",
         },
     )
-    assert response.status_code == 400
+    assert response.status_code == 409
     assert "already exists" in response.json()["detail"]
 
 

@@ -1,0 +1,155 @@
+envVarGroups:
+  - name: crimelens-service-auth
+    envVars:
+      - key: SERVICE_AUTH_TOKEN
+        generateValue: true
+  - name: crimelens-database-role-passwords
+    envVars:
+      - key: API_DATABASE_PASSWORD
+        generateValue: true
+      - key: LEDGER_DATABASE_PASSWORD
+        generateValue: true
+
+databases:
+  - name: crimelens-postgres
+    databaseName: crimelens
+    user: crimelens_owner
+    postgresMajorVersion: "16"
+    region: singapore
+    ipAllowList: []
+
+services:
+  - name: crimelens-extraction
+    type: pserv
+    runtime: docker
+    region: singapore
+    dockerfilePath: services/entity-extraction-service/Dockerfile
+    dockerContext: services/entity-extraction-service
+    autoDeployTrigger: checksPass
+    envVars:
+      - fromGroup: crimelens-service-auth
+      - key: ENVIRONMENT
+        value: production
+
+  - name: crimelens-graph
+    type: pserv
+    runtime: docker
+    region: singapore
+    dockerfilePath: services/graph-service/Dockerfile
+    dockerContext: services/graph-service
+    autoDeployTrigger: checksPass
+    envVars:
+      - fromGroup: crimelens-service-auth
+      - key: ENVIRONMENT
+        value: production
+      - key: GRAPH_BACKEND
+        value: neo4j
+      - key: EXTRACTION_SERVICE_URL
+        fromService:
+          name: crimelens-extraction
+          type: pserv
+          property: hostport
+      - key: NEO4J_URI
+        sync: false
+      - key: NEO4J_USER
+        sync: false
+      - key: NEO4J_PASSWORD
+        sync: false
+
+  - name: crimelens-ledger
+    type: pserv
+    runtime: docker
+    region: singapore
+    dockerfilePath: services/audit-ledger-service/Dockerfile
+    dockerContext: services/audit-ledger-service
+    autoDeployTrigger: checksPass
+    envVars:
+      - fromGroup: crimelens-service-auth
+      - fromGroup: crimelens-database-role-passwords
+      - key: ENVIRONMENT
+        value: production
+      - key: LEDGER_AUTO_MIGRATE
+        value: "false"
+      - key: MIGRATION_DATABASE_URL
+        fromDatabase:
+          name: crimelens-postgres
+          property: connectionString
+
+  - name: crimelens-ingestion
+    type: pserv
+    runtime: docker
+    region: singapore
+    dockerfilePath: services/ingestion-service/Dockerfile
+    dockerContext: services/ingestion-service
+    autoDeployTrigger: checksPass
+    envVars:
+      - fromGroup: crimelens-service-auth
+      - key: ENVIRONMENT
+        value: production
+      - key: API_SERVICE_URL
+        fromService:
+          name: crimelens-api
+          type: web
+          property: hostport
+
+  - name: crimelens-api
+    type: web
+    runtime: docker
+    region: singapore
+    dockerfilePath: deployment/render/case-api.Dockerfile
+    dockerContext: .
+    autoDeployTrigger: checksPass
+    preDeployCommand: python /bootstrap/bootstrap.py
+    healthCheckPath: /health
+    maxShutdownDelaySeconds: 60
+    disk:
+      name: uploads
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - fromGroup: crimelens-service-auth
+      - fromGroup: crimelens-database-role-passwords
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: DATA_BACKEND
+        value: postgres
+      - key: SECRET_KEY
+        generateValue: true
+      - key: MIGRATION_DATABASE_URL
+        fromDatabase:
+          name: crimelens-postgres
+          property: connectionString
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: SEED_SYNTHETIC
+        value: "false"
+      - key: ALLOW_DEMO_SEED
+        value: "false"
+      - key: UPLOAD_DIR
+        value: /data/uploads
+      - key: AI_SERVICE_URL
+        fromService:
+          name: crimelens-extraction
+          type: pserv
+          property: hostport
+      - key: GRAPH_SERVICE_URL
+        fromService:
+          name: crimelens-graph
+          type: pserv
+          property: hostport
+      - key: LEDGER_SERVICE_URL
+        fromService:
+          name: crimelens-ledger
+          type: pserv
+          property: hostport
+      - key: INGESTION_SERVICE_URL
+        fromService:
+          name: crimelens-ingestion
+          type: pserv
+          property: hostport

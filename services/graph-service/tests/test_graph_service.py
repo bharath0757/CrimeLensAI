@@ -1,6 +1,10 @@
 import pytest
-from app.models.schemas import EntityUpsertRequest, EntityType, RelationshipCreateRequest
-from app.services.graph_service import GraphService
+from app.models.schemas import (
+    EntityType,
+    EntityUpsertRequest,
+    RelationshipCreateRequest,
+)
+
 from tests.conftest import _add_entity
 
 
@@ -58,8 +62,7 @@ class TestRelationshipCreate:
         # Add entities first
         _add_entity(store, "CASE-001", EntityType.PERSON, "Rajesh Kumar")
         _add_entity(store, "CASE-001", EntityType.PHONE, "+919876543210")
-        person_id = list(store.entities.keys())[0]
-        phone_id = list(store.entities.keys())[1]
+        person_id, phone_id = list(store.entities)[:2]
         
         req = RelationshipCreateRequest(
             source_entity_id=person_id, target_entity_id=phone_id,
@@ -72,7 +75,7 @@ class TestRelationshipCreate:
     
     def test_reject_missing_source_entity(self, graph_service, store):
         _add_entity(store, "CASE-001", EntityType.PHONE, "+919876543210")
-        phone_id = list(store.entities.keys())[0]
+        phone_id = next(iter(store.entities))
         
         req = RelationshipCreateRequest(
             source_entity_id="nonexistent", target_entity_id=phone_id,

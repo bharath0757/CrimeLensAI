@@ -1,17 +1,18 @@
 """CrimeLensAI Graph Service — entity/relationship business logic."""
 
-import math
 import re
-import uuid
-from typing import Any
 
-from app.store import InMemoryGraphStore
-from app.models.schemas import (
-    EntityUpsertRequest, EntityUpsertResponse,
-    RelationshipCreateRequest, RelationshipCreateResponse,
-    LinkageResponse, LinkedCase, SharedEntity,
-)
 from app.models import EntityInput, RelationshipInput
+from app.models.schemas import (
+    EntityUpsertRequest,
+    EntityUpsertResponse,
+    LinkageResponse,
+    LinkedCase,
+    RelationshipCreateRequest,
+    RelationshipCreateResponse,
+    SharedEntity,
+)
+from app.store import InMemoryGraphStore
 
 ENTITY_WEIGHTS = {
     "PHONE": 1.0, "UPI_ID": 1.0, "VEHICLE": 0.95,
@@ -102,6 +103,7 @@ class GraphService:
             confidence=request.confidence,
             why_linked=request.why_linked,
             evidence_record_id=request.evidence_record_id,
+            evidence=request.evidence,
         )
         rel = self._store.create_relationship(rel_input)
         rel_id = rel["id"]

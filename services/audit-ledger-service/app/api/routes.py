@@ -1,134 +1,74 @@
-"""
-Ledger Service — API Routes
-=============================
-Endpoints for audit ledger, authentication, and privacy masking.
-"""
+"""Internal service API. Officer identity and case access are enforced by case-api."""
 
-from fastapi import APIRouter
+import hmac
+from typing import Annotated
 
-router = APIRouter(prefix="/api/v1", tags=["Ledger"])
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.security import APIKeyHeader
 
+from app.models import (
+    SENSITIVE_FIELDS,
+    AppendRequest,
+    AppendResponse,
+    BatchAppendRequest,
+    BatchAppendResponse,
+    ChainResponse,
+    MaskRequest,
+    MaskResponse,
+    VerificationResponse,
+)
+from app.store import LedgerStore
 
-# ---- Audit Ledger ----
-
-@router.post("/ledger/record")
-async def append_record(payload: dict):
-    """
-    Append a new record to the hash-chain ledger.
-
-    Called by other services (extraction, graph, api) whenever an entity
-    or relationship is created/modified. The record is:
-    1. Serialized to a canonical JSON form
-    2. SHA-256 hashed with the previous record's hash (chain linkage)
-    3. Stored append-only — no updates, no deletes
-
-    TODO: Implement hash-chain append logic
-    """
-    return {
-        "status": "ok",
-        "message": "Ledger record append placeholder",
-        "record_id": None,
-        "hash": None,
-    }
+service_key = APIKeyHeader(name="X-Service-Token", auto_error=False)
 
 
-@router.get("/ledger/verify/{record_id}")
-async def verify_record(record_id: str):
-    """
-    Verify that a specific ledger record has not been tampered with.
-
-    Recomputes the hash chain from the record's predecessor and confirms
-    the stored hash matches. Returns verification status + the original
-    source data for the record.
-
-    TODO: Implement chain verification logic
-    """
-    return {
-        "record_id": record_id,
-        "verified": False,
-        "message": "Verification placeholder",
-    }
+def require_service(request: Request, x_service_token: Annotated[str | None, Depends(service_key)]) -> None:
+    expected = request.app.state.settings.SERVICE_AUTH_TOKEN
+    if not expected or not x_service_token or not hmac.compare_digest(expected.encode(), x_service_token.encode()):
+        raise HTTPException(status_code=401, detail="Invalid service credentials")
 
 
-@router.get("/ledger/chain")
-async def get_chain(limit: int = 50, offset: int = 0):
-    """
-    Retrieve a paginated segment of the audit chain.
-
-    Used by the frontend Audit Trail screen to display the ledger.
-
-    TODO: Implement paginated chain retrieval
-    """
-    return {
-        "records": [],
-        "total": 0,
-        "limit": limit,
-        "offset": offset,
-    }
+def get_store(request: Request) -> LedgerStore:
+    return request.app.state.store
 
 
-# ---- Authentication & RBAC ----
-
-@router.post("/auth/login")
-async def login(payload: dict):
-    """
-    Authenticate a user and return a JWT token.
-
-    Roles: Investigator, Supervisor, Admin
-    Each role has different data access permissions.
-
-    TODO: Implement JWT token generation with role claims
-    """
-    return {
-        "status": "ok",
-        "message": "Login placeholder",
-        "token": None,
-        "role": None,
-    }
+Store = Annotated[LedgerStore, Depends(get_store)]
+CaseFilter = Annotated[list[str] | None, Query(max_length=1000)]
+router = APIRouter(prefix="/api/v1", tags=["Ledger"], dependencies=[Depends(require_service)])
 
 
-@router.get("/auth/me")
-async def get_current_user():
-    """
-    Return the currently authenticated user's profile and role.
-
-    TODO: Implement JWT token validation and user lookup
-    """
-    return {
-        "status": "ok",
-        "message": "Current user placeholder",
-        "user": None,
-    }
+@router.post("/ledger/record", response_model=AppendResponse, status_code=201)
+def append_record(payload: AppendRequest, store: Store) -> AppendResponse:
+    return AppendResponse(record=store.append(payload))
 
 
-@router.post("/auth/register")
-async def register_user(payload: dict):
-    """
-    Register a new user (Admin-only endpoint).
-
-    TODO: Implement user creation with password hashing
-    """
-    return {
-        "status": "ok",
-        "message": "User registration placeholder",
-    }
+@router.post("/ledger/batch", response_model=BatchAppendResponse, status_code=201)
+def append_batch(payload: BatchAppendRequest, store: Store) -> BatchAppendResponse:
+    return BatchAppendResponse(records=store.append_many(payload.events))
 
 
-# ---- Privacy Masking ----
+@router.get("/ledger/verify/{record_id}", response_model=VerificationResponse)
+def verify_record(record_id: str, store: Store, case_id: CaseFilter = None) -> VerificationResponse:
+    return store.verify(record_id, case_id)
 
-@router.post("/privacy/mask")
-async def mask_fields(payload: dict):
-    """
-    Apply field-level privacy masking to victim-identifying data.
 
-    Masks fields like victim name, address, phone number based on
-    the requesting user's role. Investigators see partial masks;
-    Supervisors see full data with audit logging.
+@router.get("/ledger/chain", response_model=ChainResponse)
+def get_chain(
+    store: Store, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
+    case_id: CaseFilter = None,
+) -> ChainResponse:
+    return store.list_records(limit, offset, case_id)
 
-    TODO: Implement role-based field masking rules
-    """
-    return {
-        "status": "ok",
-        "message": "Privacy masking placeholder",
-        "masked_data": {},
-    }
+
+@router.post("/privacy/mask", response_model=MaskResponse)
+def mask_fields(payload: MaskRequest) -> MaskResponse:
+    sensitive = SENSITIVE_FIELDS | {field.casefold() for field in payload.sensitive_fields}
+
+    def masked(value):
+        if isinstance(value, dict):
+            return {key: "[REDACTED]" if key.casefold() in sensitive else masked(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [masked(item) for item in value]
+        return value
+
+    return MaskResponse(masked_data=masked(payload.data))
