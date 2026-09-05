@@ -64,7 +64,7 @@ jobs:
       NEO4J_PASSWORD: ci_neo4j_password_26189
       SECRET_KEY: ci_jwt_secret_26189_secure_000000000000000000000000
       SERVICE_AUTH_TOKEN: ci_service_token_26189_secure_0000000000000000000000
-      BOOTSTRAP_ADMIN_EMAIL: admin@ci.crimelens.invalid
+      BOOTSTRAP_ADMIN_EMAIL: admin-ci@example.com
       BOOTSTRAP_ADMIN_PASSWORD: CI-demo-password-26189
       SEED_SYNTHETIC: "true"
       ALLOW_DEMO_SEED: "true"
