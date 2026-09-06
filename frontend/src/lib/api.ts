@@ -47,6 +47,58 @@ interface ApiError {
   detail?: unknown;
 }
 
+function hasStatus(error: unknown, status: number): error is ApiError {
+  return typeof error === "object" && error !== null && "status" in error && error.status === status;
+}
+
+interface LegacyDashboardStats {
+  total_cases: number;
+  total_entities: number;
+  cross_case_links: number;
+  pending_reviews: number;
+}
+
+interface LegacyDashboardSummary {
+  active_cases: number;
+  total_relationships: number;
+}
+
+interface LegacyDashboardStatistics {
+  cases_by_status: Record<string, number>;
+  cases_by_priority: Record<string, number>;
+  entities_by_type: Record<string, number>;
+}
+
+async function legacyDashboardOverview(signal?: AbortSignal): Promise<DashboardOverview> {
+  const [metrics, summary, statistics] = await Promise.all([
+    request<LegacyDashboardStats>("/api/v1/dashboard/stats", { signal }),
+    request<LegacyDashboardSummary>("/api/v1/dashboard/summary", { signal }),
+    request<LegacyDashboardStatistics>("/api/v1/dashboard/statistics", { signal }),
+  ]);
+  const priorities = statistics.cases_by_priority;
+  return {
+    generated_at: new Date().toISOString(),
+    data_backend: "memory",
+    metrics: {
+      total_cases: metrics.total_cases,
+      high_risk_cases: (priorities.HIGH ?? 0) + (priorities.CRITICAL ?? 0),
+      linked_networks: metrics.cross_case_links,
+      money_flow: null,
+      active_investigations: summary.active_cases,
+      total_entities: metrics.total_entities,
+      total_relationships: summary.total_relationships,
+      pending_reviews: metrics.pending_reviews,
+      currency: "INR",
+    },
+    statistics: {
+      cases_by_status: statistics.cases_by_status,
+      cases_by_priority: priorities,
+      entities_by_type: statistics.entities_by_type,
+      transaction_timeline: [],
+    },
+  };
+}
+
 export function errorMessage(error: unknown): string {
   if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
     return error.message;
@@ -237,8 +289,22 @@ export const api = {
   // Dashboard
   dashboard: {
     stats: (signal?: AbortSignal) => request<DashboardMetrics>("/api/v1/dashboard/stats", { signal }),
-    overview: (signal?: AbortSignal) => request<DashboardOverview>("/api/v1/dashboard/overview", { signal }),
-    alerts: (signal?: AbortSignal, offset = 0) => request<ConnectionAlertPage>(`/api/v1/dashboard/alerts?offset=${offset}&limit=20`, { signal }),
+    overview: async (signal?: AbortSignal) => {
+      try {
+        return await request<DashboardOverview>("/api/v1/dashboard/overview", { signal });
+      } catch (error) {
+        if (!hasStatus(error, 404)) throw error;
+        return legacyDashboardOverview(signal);
+      }
+    },
+    alerts: async (signal?: AbortSignal, offset = 0) => {
+      try {
+        return await request<ConnectionAlertPage>(`/api/v1/dashboard/alerts?offset=${offset}&limit=20`, { signal });
+      } catch (error) {
+        if (!hasStatus(error, 404)) throw error;
+        return { total: 0, unread: 0, items: [], available: false };
+      }
+    },
     acknowledge: (id: string) => request<ConnectionAlert>(`/api/v1/dashboard/alerts/${encodeURIComponent(id)}/acknowledge`, { method: "POST" }),
   },
 

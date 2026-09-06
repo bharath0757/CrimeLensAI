@@ -121,6 +121,7 @@ export interface ConnectionAlertPage {
   total: number;
   unread: number;
   items: ConnectionAlert[];
+  available?: boolean;
 }
 
 export interface IngestionReceipt {

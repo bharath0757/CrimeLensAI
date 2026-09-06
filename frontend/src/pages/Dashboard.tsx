@@ -53,10 +53,10 @@ function ConnectionNotifications() {
       <button className={button} disabled={alerts.loading} onClick={() => void alerts.refresh()}>Refresh alerts</button>
     </div>
     <p className="mt-2 text-sm text-surface-600 dark:text-surface-300">Investigative leads, not findings of guilt. Acknowledging records receipt, not confirmation of a link.</p>
-    <p className="my-3 text-sm font-medium" role="status">{alerts.data ? `${alerts.data.unread} unacknowledged connections` : alerts.loading ? "Checking for connections…" : "Connection queue unavailable"}</p>
+    <p className="my-3 text-sm font-medium" role="status">{alerts.data?.available === false ? "Connection notifications require the current graph API deployment." : alerts.data ? `${alerts.data.unread} unacknowledged connections` : alerts.loading ? "Checking for connections…" : "Connection queue unavailable"}</p>
     {alerts.error && <p role="alert" className="my-3 text-sm text-red-700 dark:text-red-300">Alerts could not refresh: {alerts.error}{alerts.data ? " Showing the last successful response." : ""}</p>}
     {actionError && <p role="alert" className="my-3 text-sm text-red-700 dark:text-red-300">Acknowledgement failed: {actionError}</p>}
-    {alerts.data?.items.length === 0 && <p className="py-4 text-sm">No connections on this page for your accessible cases.</p>}
+    {alerts.data?.available !== false && alerts.data?.items.length === 0 && <p className="py-4 text-sm">No connections on this page for your accessible cases.</p>}
     <ul className="divide-y divide-surface-200 dark:divide-surface-800">
       {alerts.data?.items.map(alert => <li key={alert.id} className="space-y-2 py-4">
         <div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{alert.title}</h3><span className="rounded bg-amber-100 px-2 py-1 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">{alert.severity}</span><span className="text-xs">{alert.status === "NEW" ? "New" : "Acknowledged"}</span></div>

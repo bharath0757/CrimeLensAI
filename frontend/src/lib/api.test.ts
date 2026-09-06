@@ -27,6 +27,24 @@ test("validation errors name the invalid input", async () => {
   await expect(api.cases.create({ title: "x", description: "test" })).rejects.toMatchObject({ status: 422, message: "title: Too short" });
 });
 
+test("dashboard adapts the deployed split endpoints when overview is unavailable", async () => {
+  const responses = [
+    new Response(JSON.stringify({ detail: "Not Found" }), { status: 404 }),
+    new Response(JSON.stringify({ total_cases: 2, total_entities: 5, cross_case_links: 1, pending_reviews: 3 })),
+    new Response(JSON.stringify({ active_cases: 2, total_relationships: 4 })),
+    new Response(JSON.stringify({ cases_by_status: { OPEN: 2 }, cases_by_priority: { HIGH: 1, CRITICAL: 1 }, entities_by_type: { PERSON: 5 } })),
+  ];
+  vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(responses.shift())));
+  const overview = await api.dashboard.overview();
+  expect(overview.metrics).toMatchObject({ total_cases: 2, high_risk_cases: 2, linked_networks: 1, active_investigations: 2 });
+  expect(overview.statistics.cases_by_status).toEqual({ OPEN: 2 });
+});
+
+test("dashboard marks unavailable legacy alerts without fabricating connections", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "Not Found" }), { status: 404 })));
+  await expect(api.dashboard.alerts()).resolves.toEqual({ total: 0, unread: 0, items: [], available: false });
+});
+
 test("preview passes text and cancellation to the real gateway path", async () => {
   const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ entities: [] })));
   vi.stubGlobal("fetch", fetchMock);
