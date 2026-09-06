@@ -21,7 +21,7 @@ import type { DashboardOverview, DashboardMetrics, ConnectionAlert, ConnectionAl
 import type { CaseLinkageResponse } from "./contracts";
 import type { IngestionReceipt } from "./contracts";
 
-const PRODUCTION_API_ORIGIN = "https://crimelensai-backend.onrender.com";
+const PRODUCTION_API_ORIGIN = "https://crimelensai-lmsi.onrender.com";
 const configuredApiOrigin = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
 const configuredHost = (() => {
   try {
