@@ -33,15 +33,19 @@ successfully`; the API must not be marked healthy before that message appears.
 ## Vercel frontend
 
 Deploy `frontend/` as the Vercel project root. Set
-`VITE_API_BASE_URL=https://<crimelens-api-host>/api/v1` for Production and Preview.
+`VITE_API_BASE_URL=https://<crimelens-api-host>` for Production and Preview.
+Use only the HTTPS origin, without `/api/v1`: the frontend already adds that
+prefix to API requests. Vercel builds reject a missing or invalid API origin.
+Use Node.js 24, `npm ci`, `npm run build`, and output directory `dist`.
 The committed `frontend/vercel.json` provides the SPA rewrite required by
 `BrowserRouter`.
 
 ## Release checks
 
 1. Require CI checks before merging the deployment branch.
-2. Confirm all five Render services report healthy and `/health` on the Case API
-   reports PostgreSQL, extraction, graph, ledger, and ingestion as healthy.
+2. Confirm all five Render services are live. `/health` on the Case API checks
+   PostgreSQL connectivity and its delivery workers; it does not prove the four
+   downstream services are reachable. Verify those with the workflow below.
 3. Log in with the bootstrap administrator, create a permanent named officer
    account, and rotate the bootstrap password.
 4. Upload a test FIR and verify extraction, linkage, alert, audit verification,

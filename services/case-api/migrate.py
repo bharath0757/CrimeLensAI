@@ -3,7 +3,6 @@ from pathlib import Path
 
 import psycopg2
 
-
 ROOT = Path(__file__).resolve().parents[2]
 DATABASE_URL = os.getenv("MIGRATION_DATABASE_URL") or os.getenv("DATABASE_URL")
 
