@@ -21,7 +21,20 @@ import type { DashboardOverview, DashboardMetrics, ConnectionAlert, ConnectionAl
 import type { CaseLinkageResponse } from "./contracts";
 import type { IngestionReceipt } from "./contracts";
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+const PRODUCTION_API_ORIGIN = "https://crimelensai-backend.onrender.com";
+const configuredApiOrigin = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+const configuredHost = (() => {
+  try {
+    return new URL(configuredApiOrigin).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+})();
+const isLocalApiOrigin = configuredHost === "localhost" || configuredHost === "0.0.0.0" ||
+  configuredHost === "[::1]" || configuredHost.startsWith("127.");
+const API_BASE_URL = import.meta.env.PROD && (!configuredApiOrigin || isLocalApiOrigin)
+  ? PRODUCTION_API_ORIGIN
+  : configuredApiOrigin;
 const TOKEN_KEY = "crimelens_auth_token";
 
 /**
