@@ -128,11 +128,11 @@ services:
       - key: BOOTSTRAP_ADMIN_PASSWORD
         sync: false
       - key: ALLOWED_ORIGINS
-        sync: false
+        value: '["http://localhost:5173","http://localhost:3000","https://crime-lens-ai-two.vercel.app"]'
       - key: SEED_SYNTHETIC
-        value: "false"
+        value: "true"
       - key: ALLOW_DEMO_SEED
-        value: "false"
+        value: "true"
       - key: UPLOAD_DIR
         value: /data/uploads
       - key: AI_SERVICE_URL

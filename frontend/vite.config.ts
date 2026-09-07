@@ -6,8 +6,9 @@ import { validateVercelApiOrigin } from "./config/api-origin.ts";
 // https://vite.dev/config/
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), "");
+  const targetApiOrigin = process.env.VITE_API_BASE_URL || env.VITE_API_BASE_URL || "https://crimelensai-lmsi.onrender.com";
   if (command === "build" && (process.env.VERCEL ?? env.VERCEL) === "1") {
-    validateVercelApiOrigin(process.env.VITE_API_BASE_URL ?? env.VITE_API_BASE_URL);
+    validateVercelApiOrigin(targetApiOrigin);
   }
   const proxyTarget = env.API_PROXY_TARGET;
   return {

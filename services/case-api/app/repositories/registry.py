@@ -22,6 +22,8 @@ elif settings.DATA_BACKEND == "memory":
     from app.repositories.entity_repo import entity_repository
     from app.repositories.relationship_repo import relationship_repository
     from app.repositories.user_repo import user_repository
+    from app.repositories.synthetic_loader import synthetic_loader
+    synthetic_loader.load_if_needed(case_repository, entity_repository, relationship_repository)
 else:
     raise RuntimeError("DATA_BACKEND must be 'postgres' or 'memory'")
 

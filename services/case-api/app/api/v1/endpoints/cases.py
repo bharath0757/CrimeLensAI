@@ -25,7 +25,21 @@ async def create_case(
     case_repo: CaseRepositoryInterface = Depends(get_case_repository),
 ) -> Any:
     """Create a new crime investigation case."""
-    return await case_repo.create(case_create, owner_id=current_user.id)
+    res = await case_repo.create(case_create, owner_id=current_user.id)
+    try:
+        from app.services.audit_events import record_security_event
+        priority_str = res.priority.value if hasattr(res.priority, 'value') else str(res.priority)
+        await record_security_event(
+            actor=current_user.id,
+            action="CASE_CREATED",
+            resource_type="CASE",
+            record_id=res.id,
+            case_id=res.id,
+            payload={"case_number": res.case_number, "title": res.title, "priority": priority_str},
+        )
+    except Exception:
+        pass
+    return res
 
 
 @router.get("", response_model=CaseListResponse, summary="List Cases")

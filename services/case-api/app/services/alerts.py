@@ -39,6 +39,7 @@ async def audit_alert_action(alert: ConnectionAlert, user: UserResponse, action:
 class AlertService:
     def __init__(self, cases=case_repository, transport=None, audit=audit_alert_action):
         self.cases, self.transport, self.audit = cases, transport, audit
+        self._acknowledged_alerts: set[str] = set()
 
     async def _request(self, method, path):
         try:
@@ -66,11 +67,44 @@ class AlertService:
         try:
             body = await self._request("GET", "/alerts")
             alerts = [ConnectionAlert.model_validate(item) for item in body["alerts"]]
-        except (KeyError, TypeError, ValueError) as exc:
-            raise HTTPException(502, "Invalid graph alert response") from exc
+        except Exception:
+            if settings.DATA_BACKEND != "memory" or self.transport is not None:
+                raise
+            alerts = await self._memory_alerts(case_ids)
         # Never leak another case's ID, identifier or narrative through an explanation.
         return sorted((alert for alert in alerts if set(alert.case_ids).issubset(case_ids)),
                       key=lambda alert: (alert.status != "NEW", -alert.created_at.timestamp(), alert.id))
+
+    async def _memory_alerts(self, visible_case_ids: set[str]) -> list[ConnectionAlert]:
+        from collections import defaultdict
+        from datetime import UTC, datetime
+        from app.repositories.registry import entity_repository
+        from app.schemas.entity import EntityType
+        if not hasattr(entity_repository, "_entities"):
+            return []
+        shared = defaultdict(set)
+        for ent in entity_repository._entities.values():
+            cid = ent.get("case_id")
+            if cid in visible_case_ids and ent.get("entity_type") in (EntityType.PHONE_NUMBER, EntityType.VEHICLE, EntityType.UPI_ID):
+                val = ent.get("name", "").strip().casefold()
+                if val:
+                    shared[(ent["entity_type"].value, val)].add(cid)
+        results = []
+        for (etype, val), cids in sorted(shared.items()):
+            if len(cids) >= 2:
+                cid_list = sorted(cids)
+                aid = f"alert-{etype.lower()}-{val.replace(' ', '_').replace('+', '')[:20]}"
+                status = "ACKNOWLEDGED" if aid in self._acknowledged_alerts else "NEW"
+                results.append(ConnectionAlert(
+                    id=aid,
+                    case_ids=cid_list,
+                    severity="HIGH" if etype in ("PHONE_NUMBER", "UPI_ID") else "MEDIUM",
+                    status=status,
+                    title=f"Cross-Case {etype.replace('_', ' ').title()} Overlap: {val}",
+                    explanation=f"Shared {etype.replace('_', ' ').lower()} identified across cases {', '.join(cid_list[:3])}",
+                    created_at=datetime.now(UTC),
+                ))
+        return results
 
     async def list(self, user: UserResponse, offset=0, limit=20):
         alerts = await self._visible(user)
@@ -82,6 +116,12 @@ class AlertService:
         alert = next((item for item in await self._visible(user) if item.id == alert_id), None)
         if not alert:
             raise HTTPException(404, "Connection alert not found")
+        if settings.DATA_BACKEND == "memory" and self.transport is None:
+            await self.audit(alert, user, "ALERT_ACK_REQUESTED")
+            self._acknowledged_alerts.add(alert_id)
+            ack = alert.model_copy(update={"status": "ACKNOWLEDGED"})
+            await self.audit(ack, user, "ALERT_ACKNOWLEDGED")
+            return ack
         await self.audit(alert, user, "ALERT_ACK_REQUESTED")
         result = await self._request("POST", f"/alerts/{quote(alert_id, safe='')}/acknowledge")
         try:

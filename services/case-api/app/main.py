@@ -63,9 +63,12 @@ app.add_middleware(AuditContextMiddleware)
 
 # Configure CORS
 origins = list(settings.ALLOWED_ORIGINS)
+if "https://crime-lens-ai-two.vercel.app" not in origins:
+    origins.append("https://crime-lens-ai-two.vercel.app")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"^https://.*\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

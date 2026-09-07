@@ -60,7 +60,7 @@ def test_preview_preserves_unicode_offsets_without_creating_case(client, admin_a
     assert client.get("/api/v1/cases", headers=admin_auth_headers).json()["total"] == count
 
 
-@pytest.mark.parametrize("text", ["", "   ", "x" * 500001])
+@pytest.mark.parametrize("text", ["", "   ", "x" * 500001], ids=["empty", "spaces", "oversized"])
 def test_preview_rejects_empty_and_oversized_text(client, admin_auth_headers, preview_service, text):
     assert client.post("/api/v1/extraction/preview", json={"text": text}, headers=admin_auth_headers).status_code == 422
     assert preview_service == []

@@ -1,8 +1,9 @@
+import json
 import os
 import secrets
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -38,7 +39,27 @@ class Settings(BaseSettings):
         "http://127.0.0.1:4173",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
+        "https://crime-lens-ai-two.vercel.app",
     ]
+
+    @field_validator("ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Any) -> list[str]:
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return []
+            if v.startswith("[") and v.endswith("]"):
+                try:
+                    parsed = json.loads(v)
+                    if isinstance(parsed, list):
+                        return [str(item).strip().rstrip("/") for item in parsed if str(item).strip()]
+                except Exception:
+                    pass
+            return [item.strip().rstrip("/") for item in v.split(",") if item.strip()]
+        elif isinstance(v, (list, tuple, set)):
+            return [str(item).strip().rstrip("/") for item in v if str(item).strip()]
+        return v
 
     # File Upload Settings
     UPLOAD_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "uploads")

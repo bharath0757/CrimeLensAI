@@ -218,6 +218,17 @@ async def confirm_entity(
     updated = await ent_repo.set_review_status(entity.id, "CONFIRMED")
     if updated is None:
         raise HTTPException(status_code=404, detail="Entity not found.")
+    try:
+        await record_security_event(
+            actor=current_user.id,
+            action="ENTITY_CONFIRMED",
+            resource_type="ENTITY",
+            record_id=entity.id,
+            case_id=entity.case_id,
+            payload={"entity_name": entity.name, "review_status": "CONFIRMED"},
+        )
+    except Exception:
+        pass
     return masked_entity(updated)
 
 
@@ -232,6 +243,17 @@ async def reject_entity(
     updated = await ent_repo.set_review_status(entity.id, "REJECTED")
     if updated is None:
         raise HTTPException(status_code=404, detail="Entity not found.")
+    try:
+        await record_security_event(
+            actor=current_user.id,
+            action="ENTITY_REJECTED",
+            resource_type="ENTITY",
+            record_id=entity.id,
+            case_id=entity.case_id,
+            payload={"entity_name": entity.name, "review_status": "REJECTED"},
+        )
+    except Exception:
+        pass
     return masked_entity(updated)
 
 

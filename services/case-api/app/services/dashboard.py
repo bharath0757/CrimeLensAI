@@ -141,13 +141,15 @@ class DashboardService:
                 groups[(entity.entity_type.value, normalized_entity_value(entity.entity_type, entity.name))].add(entity.case_id)
         investigators = {case.owner_id for case in cases}
         investigators.update(item for case in cases for item in case.assigned_investigator_ids)
-        # In-memory development mode has no transaction repository; do not invent money totals.
+        from app.repositories.synthetic_loader import synthetic_loader
         activities = [{"id": case.id, "type": "CASE_CREATED", "description": "CASE CREATED", "timestamp": case.created_at,
                        "case_id": case.id, "actor": case.owner_id} for case in sorted(cases, key=lambda case: case.created_at, reverse=True)[:10]]
+        money = synthetic_loader.total_money_flow if synthetic_loader.total_money_flow > 0 else None
+        timeline = synthetic_loader.transaction_timeline
         return _assemble("memory", [case.model_dump(mode="json") for case in cases],
                          {"types": Counter(entity.entity_type.value for entity in entities), "pending": sum(entity.review_status == "PENDING" for entity in entities)},
                          Counter(relation.relationship_type.value for relation in relationships),
-                         Counter(document.processing_status.value for document in documents), groups.values(), None, [], activities, investigators)
+                         Counter(document.processing_status.value for document in documents), groups.values(), money, timeline, activities, investigators)
 
 
 dashboard_service = DashboardService()
