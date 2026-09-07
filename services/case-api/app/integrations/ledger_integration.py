@@ -166,11 +166,9 @@ class LedgerService:
         self.local_store = InMemoryLedgerStore()
 
     def _should_use_remote(self) -> bool:
-        if self.transport is not None:
-            return True
-        if settings.DATA_BACKEND == "postgres" and settings.SERVICE_AUTH_TOKEN and settings.LEDGER_SERVICE_URL:
-            return True
-        return False
+        return self.transport is not None or bool(
+            settings.DATA_BACKEND == "postgres" and settings.SERVICE_AUTH_TOKEN and settings.LEDGER_SERVICE_URL
+        )
 
     async def _request(self, method: str, path: str, *, params=None, json=None) -> dict:
         if not settings.SERVICE_AUTH_TOKEN:

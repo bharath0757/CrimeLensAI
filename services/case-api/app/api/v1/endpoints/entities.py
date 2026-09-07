@@ -1,5 +1,7 @@
 """Case-scoped entity APIs with victim-field privacy and reviewed AI ingestion."""
 
+from contextlib import suppress
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.deps import (
@@ -218,7 +220,7 @@ async def confirm_entity(
     updated = await ent_repo.set_review_status(entity.id, "CONFIRMED")
     if updated is None:
         raise HTTPException(status_code=404, detail="Entity not found.")
-    try:
+    with suppress(Exception):
         await record_security_event(
             actor=current_user.id,
             action="ENTITY_CONFIRMED",
@@ -227,8 +229,6 @@ async def confirm_entity(
             case_id=entity.case_id,
             payload={"entity_name": entity.name, "review_status": "CONFIRMED"},
         )
-    except Exception:
-        pass
     return masked_entity(updated)
 
 
@@ -243,7 +243,7 @@ async def reject_entity(
     updated = await ent_repo.set_review_status(entity.id, "REJECTED")
     if updated is None:
         raise HTTPException(status_code=404, detail="Entity not found.")
-    try:
+    with suppress(Exception):
         await record_security_event(
             actor=current_user.id,
             action="ENTITY_REJECTED",
@@ -252,8 +252,6 @@ async def reject_entity(
             case_id=entity.case_id,
             payload={"entity_name": entity.name, "review_status": "REJECTED"},
         )
-    except Exception:
-        pass
     return masked_entity(updated)
 
 

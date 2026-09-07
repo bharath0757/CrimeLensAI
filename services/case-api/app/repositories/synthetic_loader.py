@@ -12,14 +12,32 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from app.integrations.ledger_integration import ledger_service
 from app.schemas.case import CasePriority, CaseStatus
 from app.schemas.entity import EntityType
 from app.schemas.relationship import RelationshipType
-from app.integrations.ledger_integration import ledger_service
 
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[4]
+
+def _resolve_synthetic_dir() -> Path | None:
+    if Path("/datasets").exists():
+        return Path("/datasets")
+    curr = Path(__file__).resolve().parent
+    for _ in range(6):
+        cand = curr / "data" / "synthetic"
+        if cand.exists():
+            return cand
+        cand_ds = curr / "datasets"
+        if cand_ds.exists():
+            return cand_ds
+        if curr.parent == curr:
+            break
+        curr = curr.parent
+    return None
+
+
+SYNTHETIC_DIR = _resolve_synthetic_dir()
 
 class SyntheticDataLoader:
     def __init__(self):
@@ -290,11 +308,11 @@ class SyntheticDataLoader:
             "timestamp": now.isoformat(),
         })
 
-        # 2. Load the 1,000 Synthetic Cases from data/synthetic/fir/fir_cases.json
-        fir_json_path = ROOT / "data" / "synthetic" / "fir" / "fir_cases.json"
-        if fir_json_path.exists():
+        # 2. Load the 1,000 Synthetic Cases from fir/fir_cases.json
+        fir_json_path = (SYNTHETIC_DIR / "fir" / "fir_cases.json") if SYNTHETIC_DIR else None
+        if fir_json_path and fir_json_path.exists():
             try:
-                with open(fir_json_path, "r", encoding="utf-8") as f:
+                with open(fir_json_path, encoding="utf-8") as f:
                     cases_data = json.load(f)
 
                 for s_idx, item in enumerate(cases_data):
@@ -303,7 +321,6 @@ class SyntheticDataLoader:
                     status = CaseStatus.IN_PROGRESS if num % 4 == 0 else CaseStatus.OPEN
                     priority = CasePriority.CRITICAL if num % 11 == 0 else (CasePriority.HIGH if num % 5 == 0 else CasePriority.MEDIUM)
                     location = item.get("location", "Unknown Location")
-                    date = item.get("date", "2026-01-01")
 
                     case_repo._cases[cid] = {
                         "id": cid,
@@ -471,18 +488,18 @@ class SyntheticDataLoader:
                             })
 
                 logger.info("Loaded %d synthetic FIR cases into in-memory store", len(cases_data))
-            except Exception as exc:
+            except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
                 logger.warning("Failed to load synthetic cases: %s", exc)
 
         # 3. Load Transactions Data for Dashboard Metrics & Timeline
-        txn_path = ROOT / "data" / "synthetic" / "transactions" / "transactions.csv"
-        if txn_path.exists():
+        txn_path = (SYNTHETIC_DIR / "transactions" / "transactions.csv") if SYNTHETIC_DIR else None
+        if txn_path and txn_path.exists():
             try:
                 daily_amounts = defaultdict(float)
                 daily_counts = defaultdict(int)
                 total_flow = 0.0
 
-                with open(txn_path, "r", encoding="utf-8") as f:
+                with open(txn_path, encoding="utf-8") as f:
                     reader = csv.DictReader(f)
                     for row in reader:
                         amt = float(row.get("amount", 0.0))
@@ -499,7 +516,7 @@ class SyntheticDataLoader:
                     for day in sorted_days
                 ]
                 logger.info("Loaded transaction totals: %f across %d timeline days", total_flow, len(self.transaction_timeline))
-            except Exception as exc:
+            except (OSError, csv.Error, KeyError, ValueError) as exc:
                 logger.warning("Failed to parse transactions: %s", exc)
 
         self.loaded = True

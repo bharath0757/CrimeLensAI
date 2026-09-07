@@ -2,12 +2,11 @@ import os
 from unittest.mock import patch
 
 import pytest
+from app.main import app
 from app.models import ValidationRequest
 from app.parsers.structured import validate
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-
-from app.main import app
 
 CDR = {"cdr_id": "CALL-1", "caller": "+91 90009 90189", "receiver": "9000990190", "timestamp": "2026-09-04T13:00:00+05:30", "duration": "45", "tower": "TOWER-01", "imei": "860000000000001"}
 TX = {"transaction_id": "TX-1", "sender": "510000000001", "receiver": "510000000002", "amount": "123.45", "upi": "demo.01@upi", "timestamp": "2026-09-04T12:00:00Z"}

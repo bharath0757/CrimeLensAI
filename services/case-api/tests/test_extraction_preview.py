@@ -6,14 +6,13 @@ from io import BytesIO
 
 import httpx
 import pytest
-from docx import Document
-from pypdf import PdfWriter
-from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
-
 from app.api.deps import get_ai_service
 from app.core.config import settings
 from app.integrations.ai_integration import IntegratedAIService
 from app.main import app
+from docx import Document
+from pypdf import PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 
 @pytest.fixture

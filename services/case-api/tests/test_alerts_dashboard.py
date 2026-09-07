@@ -4,13 +4,12 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
-from fastapi import HTTPException
-
 from app.repositories.case_repo import InMemoryCaseRepository
 from app.schemas.case import CaseCreate
 from app.schemas.user import UserResponse
 from app.services.alerts import AlertService
 from app.services.dashboard import count_linked_networks
+from fastapi import HTTPException
 
 
 def test_network_count_is_transitive_and_ignores_singletons():

@@ -6,14 +6,13 @@ from uuid import uuid4
 
 import pytest
 from app.config import Settings
+from app.main import create_app
 from app.models import AppendRequest
 from app.store import LedgerStore, entries
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DatabaseError
-
-from app.main import create_app
 
 TEST_URL = os.getenv("LEDGER_TEST_POSTGRES_URL")
 pytestmark = pytest.mark.skipif(not TEST_URL, reason="Set LEDGER_TEST_POSTGRES_URL to an isolated PostgreSQL database")

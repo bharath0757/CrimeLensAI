@@ -1,11 +1,10 @@
 from unittest.mock import patch
 
 import pytest
-from app.services.graph_service import GraphService
-from fastapi.testclient import TestClient
-
 from app.api import batches
 from app.main import app
+from app.services.graph_service import GraphService
+from fastapi.testclient import TestClient
 
 TOKEN = "isolated-graph-batch-test-service-token-26189"
 

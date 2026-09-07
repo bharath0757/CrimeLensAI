@@ -2,7 +2,6 @@
 
 import httpx
 import pytest
-
 from app.core.config import settings
 from app.integrations.ledger_integration import LedgerService, get_ledger_service
 from app.main import app

@@ -78,6 +78,7 @@ class AlertService:
     async def _memory_alerts(self, visible_case_ids: set[str]) -> list[ConnectionAlert]:
         from collections import defaultdict
         from datetime import UTC, datetime
+
         from app.repositories.registry import entity_repository
         from app.schemas.entity import EntityType
         if not hasattr(entity_repository, "_entities"):

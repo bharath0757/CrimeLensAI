@@ -1,7 +1,6 @@
 ﻿"""End-to-end integration tests for CrimeLensAI Audit Trail & Hash-Chain Ledger."""
 
 import pytest
-from app.main import app
 from app.repositories.registry import case_repository, entity_repository, relationship_repository
 from app.repositories.synthetic_loader import synthetic_loader
 

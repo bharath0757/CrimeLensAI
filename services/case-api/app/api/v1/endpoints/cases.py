@@ -26,7 +26,8 @@ async def create_case(
 ) -> Any:
     """Create a new crime investigation case."""
     res = await case_repo.create(case_create, owner_id=current_user.id)
-    try:
+    from contextlib import suppress
+    with suppress(Exception):
         from app.services.audit_events import record_security_event
         priority_str = res.priority.value if hasattr(res.priority, 'value') else str(res.priority)
         await record_security_event(
@@ -37,8 +38,6 @@ async def create_case(
             case_id=res.id,
             payload={"case_number": res.case_number, "title": res.title, "priority": priority_str},
         )
-    except Exception:
-        pass
     return res
 
 

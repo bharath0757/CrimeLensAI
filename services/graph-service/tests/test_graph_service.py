@@ -4,7 +4,6 @@ from app.models.schemas import (
     EntityUpsertRequest,
     RelationshipCreateRequest,
 )
-
 from tests.conftest import _add_entity
 
 

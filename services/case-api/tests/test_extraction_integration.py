@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
-
 from app.core.config import settings
 from app.integrations.ai_integration import IntegratedAIService
 from app.integrations.graph_integration import IntegratedGraphService

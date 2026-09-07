@@ -1,7 +1,5 @@
 ﻿"""Unit tests for InMemoryLedgerStore."""
 
-import pytest
-from fastapi import HTTPException
 
 from app.integrations.ledger_integration import InMemoryLedgerStore, record_hash
 

@@ -6,13 +6,12 @@ import os
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import text
-from sqlalchemy.exc import DatabaseError
-
 from app.core.audit_context import audit_actor, audit_request_id
 from app.core.config import settings
 from app.integrations.ledger_integration import LedgerService
 from app.services.audit_delivery import AuditDelivery
+from sqlalchemy import text
+from sqlalchemy.exc import DatabaseError
 
 TEST_URL = os.getenv("CASE_API_TEST_POSTGRES_URL")
 pytestmark = pytest.mark.skipif(not TEST_URL, reason="Requires isolated PostgreSQL integration database")

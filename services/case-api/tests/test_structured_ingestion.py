@@ -4,12 +4,11 @@ from decimal import Decimal
 
 import httpx
 import pytest
-from fastapi import HTTPException
-from sqlalchemy import text
-
 from app.core.config import settings
 from app.services.ingestion_delivery import IngestionDelivery
 from app.services.structured_ingestion import StructuredIngestion
+from fastapi import HTTPException
+from sqlalchemy import text
 
 TEST_URL = os.getenv("CASE_API_TEST_POSTGRES_URL")
 pytestmark = pytest.mark.skipif(not TEST_URL, reason="Requires isolated PostgreSQL")

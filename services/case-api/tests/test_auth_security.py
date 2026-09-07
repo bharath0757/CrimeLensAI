@@ -3,8 +3,6 @@ from unittest.mock import AsyncMock
 
 import jwt
 import pytest
-from pydantic import ValidationError
-
 from app.api.deps import get_user_repository
 from app.core.config import Settings, settings
 from app.core.security import (
@@ -14,6 +12,7 @@ from app.core.security import (
 )
 from app.main import app
 from app.schemas.user import UserResponse
+from pydantic import ValidationError
 
 
 @pytest.mark.parametrize("authenticated", [False, True])

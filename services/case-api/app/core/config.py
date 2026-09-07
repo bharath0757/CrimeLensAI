@@ -54,10 +54,10 @@ class Settings(BaseSettings):
                     parsed = json.loads(v)
                     if isinstance(parsed, list):
                         return [str(item).strip().rstrip("/") for item in parsed if str(item).strip()]
-                except Exception:
+                except (json.JSONDecodeError, ValueError):
                     pass
             return [item.strip().rstrip("/") for item in v.split(",") if item.strip()]
-        elif isinstance(v, (list, tuple, set)):
+        if isinstance(v, (list, tuple, set)):
             return [str(item).strip().rstrip("/") for item in v if str(item).strip()]
         return v
 

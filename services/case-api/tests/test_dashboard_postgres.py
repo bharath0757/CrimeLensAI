@@ -6,13 +6,12 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import text
-
 from app.core.config import settings
 from app.schemas.dashboard import ConnectionAlert
 from app.schemas.user import UserResponse
 from app.services.alerts import audit_alert_action
 from app.services.dashboard import DashboardService
+from sqlalchemy import text
 
 TEST_URL = os.getenv("CASE_API_TEST_POSTGRES_URL")
 pytestmark = pytest.mark.skipif(not TEST_URL, reason="Requires isolated PostgreSQL integration database")
