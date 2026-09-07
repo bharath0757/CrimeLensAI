@@ -344,20 +344,16 @@ export const api = {
   // Auth
   auth: {
     login: async (username: string, password: string) => {
-      const emailCandidate = username.includes("@") ? username : `${username}@crimelens.ai`;
+      const trimmed = username.trim();
+      const emailCandidate = trimmed.includes("@") ? trimmed : `${trimmed}@crimelens.ai`;
       
-      try {
-        const res = await request<AuthToken>("/api/v1/auth/login", {
-          method: "POST",
-          body: JSON.stringify({ email: emailCandidate, password }),
-        });
-        if (res?.access_token) {
-          return res;
-        }
-      } catch (err) {
-        throw err;
+      const res = await request<AuthToken>("/api/v1/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email: emailCandidate.toLowerCase(), password: password.trim() }),
+      });
+      if (res?.access_token) {
+        return res;
       }
-      
       throw new Error("Invalid response from server");
     },
 

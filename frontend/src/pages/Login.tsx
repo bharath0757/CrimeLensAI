@@ -23,7 +23,9 @@ export function Login() {
     setIsSubmitting(true);
 
     try {
-      const response = await api.auth.login(username, password);
+      const trimmedUser = username.trim();
+      const trimmedPass = password.trim();
+      const response = await api.auth.login(trimmedUser, trimmedPass);
       
       const token = response.access_token;
       
@@ -39,7 +41,7 @@ export function Login() {
       if (err.status === 0) {
         msg = typeof err.message === "string" ? err.message : "Unable to connect to authentication service.";
       } else if (err.status === 401 || err.status === 403) {
-        msg = "Invalid username or password.";
+        msg = "Invalid username or password. Please use one of the demo credentials below.";
       } else if (typeof err.message === "string") {
         msg = err.message;
       } else if (err.detail) {
@@ -99,7 +101,7 @@ export function Login() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full bg-surface-50 border border-surface-200 text-surface-900 focus:border-primary-500 dark:bg-surface-950 dark:border-surface-700 rounded-lg px-4 py-2 dark:text-white dark:focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 transition-colors"
-              placeholder="Enter your username"
+              placeholder="admin@crimelens.ai"
             />
           </div>
 
@@ -127,7 +129,40 @@ export function Login() {
             {isSubmitting ? "Signing in..." : "Sign In"}
           </button>
         </form>
-        <p className="access-notice"><InterfaceIcon name="shield" size={16} /><span>For authorized personnel. Handle case information according to your department’s policies.</span></p>
+
+        <div className="mt-6 pt-5 border-t border-surface-200 dark:border-surface-800">
+          <p className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2.5">
+            Quick Fill Demo Accounts
+          </p>
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <button
+              type="button"
+              onClick={() => { setUsername("admin@crimelens.ai"); setPassword("AdminSecret123!"); setError(null); }}
+              className="px-2 py-2 text-center rounded-md border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 hover:bg-primary-50 dark:hover:bg-primary-950 hover:border-primary-300 font-medium transition-colors"
+            >
+              <span className="block font-semibold text-surface-900 dark:text-white">Admin</span>
+              <span className="text-[10px] text-surface-500">HQ Lead</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setUsername("investigator@crimelens.ai"); setPassword("Investigator123!"); setError(null); }}
+              className="px-2 py-2 text-center rounded-md border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 hover:bg-primary-50 dark:hover:bg-primary-950 hover:border-primary-300 font-medium transition-colors"
+            >
+              <span className="block font-semibold text-surface-900 dark:text-white">Investigator</span>
+              <span className="text-[10px] text-surface-500">Field Unit</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setUsername("analyst@crimelens.ai"); setPassword("Analyst123!"); setError(null); }}
+              className="px-2 py-2 text-center rounded-md border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 hover:bg-primary-50 dark:hover:bg-primary-950 hover:border-primary-300 font-medium transition-colors"
+            >
+              <span className="block font-semibold text-surface-900 dark:text-white">Analyst</span>
+              <span className="text-[10px] text-surface-500">Intelligence</span>
+            </button>
+          </div>
+        </div>
+
+        <p className="access-notice mt-4"><InterfaceIcon name="shield" size={16} /><span>For authorized personnel. Handle case information according to your department’s policies.</span></p>
       </div>
       <p className="access-help">Need access? Contact your system administrator.</p>
       </section>

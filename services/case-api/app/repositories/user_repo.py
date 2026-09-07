@@ -80,6 +80,23 @@ class InMemoryUserRepository(UserRepositoryInterface):
         }
         self._email_to_id[inv_email.lower()] = inv_id
 
+        # Analyst User
+        analyst_id = "user-analyst-003"
+        analyst_email = "analyst@crimelens.ai"
+        self._users[analyst_id] = {
+            "id": analyst_id,
+            "email": analyst_email,
+            "password_hash": get_password_hash("Analyst123!"),
+            "full_name": "Network Analyst Agent",
+            "role": UserRole.ANALYST,
+            "badge_number": "BADGE-003",
+            "agency": "Financial Intelligence Cell",
+            "is_active": True,
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+        }
+        self._email_to_id[analyst_email.lower()] = analyst_id
+
     async def get_by_id(self, user_id: str) -> UserResponse | None:
         user_dict = self._users.get(user_id)
         if not user_dict:
