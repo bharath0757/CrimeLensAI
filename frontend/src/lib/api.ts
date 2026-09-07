@@ -22,19 +22,21 @@ import type { CaseLinkageResponse } from "./contracts";
 import type { IngestionReceipt } from "./contracts";
 
 const PRODUCTION_API_ORIGIN = "https://crimelensai-lmsi.onrender.com";
-const configuredApiOrigin = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+const rawConfiguredOrigin = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
 const configuredHost = (() => {
   try {
-    return new URL(configuredApiOrigin).hostname.toLowerCase();
+    return new URL(rawConfiguredOrigin).hostname.toLowerCase();
   } catch {
     return "";
   }
 })();
 const isLocalApiOrigin = configuredHost === "localhost" || configuredHost === "0.0.0.0" ||
   configuredHost === "[::1]" || configuredHost.startsWith("127.");
-const API_BASE_URL = import.meta.env.PROD && (!configuredApiOrigin || isLocalApiOrigin)
+const isObsoleteOrigin = configuredHost.includes("crimelensai-backend");
+const configuredApiOrigin = (isLocalApiOrigin || isObsoleteOrigin) ? "" : rawConfiguredOrigin;
+const API_BASE_URL = import.meta.env.PROD && !configuredApiOrigin
   ? PRODUCTION_API_ORIGIN
-  : configuredApiOrigin;
+  : (configuredApiOrigin || (import.meta.env.PROD ? PRODUCTION_API_ORIGIN : ""));
 const TOKEN_KEY = "crimelens_auth_token";
 
 /**
