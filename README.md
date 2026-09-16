@@ -119,8 +119,11 @@ unrelated control case.
 
 - Import `render.yaml` as a Render Blueprint for PostgreSQL and all backend
   services. Provide the prompted administrator, Vercel-origin, and Neo4j secrets.
-- Deploy `frontend/` to Vercel and set
-  `VITE_API_BASE_URL=https://<render-api-host>/api/v1`.
+- Deploy to Vercel with either the repository root (using the root `vercel.json`)
+  or `frontend/` as the Vercel Root Directory (using `frontend/vercel.json`). Set
+  `VITE_API_BASE_URL=https://<render-api-host>` (origin only; no `/api/v1` path).
+- Keep `VITE_ENABLE_DEMO_ACCOUNTS=false` unless public quick-fill demo accounts
+  are explicitly required for that deployment.
 - Follow `deployment/render/README.md` for the release checks. Production demo
   seeding remains off unless explicitly enabled.
 
