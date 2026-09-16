@@ -2,6 +2,7 @@ import asyncio
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import ValidationError
 
 from app.api.deps import (
     get_case_repository,
@@ -14,11 +15,14 @@ from app.integrations.graph_integration import GraphServiceInterface
 from app.repositories.case_repo import CaseRepositoryInterface
 from app.repositories.entity_repo import EntityRepositoryInterface
 from app.schemas.graph import (
+    CaseInsightsResponse,
     CaseLinkageResponse,
+    CasePatternsResponse,
     EntityConnectionsResponse,
     EntityNeighborsResponse,
     GraphResponse,
     GraphStats,
+    InfluentialPerson,
     ShortestPathResponse,
 )
 from app.schemas.user import UserResponse
@@ -112,6 +116,111 @@ async def get_shortest_path(
 
     path = await graph_service.get_shortest_path(source_entity_id, target_entity_id)
     return path.model_copy(update={"nodes": await _mask_graph_nodes(path.nodes, ent_repo)})
+
+
+@router.get(
+    "/cases/{case_id}/insights",
+    response_model=CaseInsightsResponse,
+    summary="Get Case Network Insights",
+)
+async def get_case_insights(
+    case_id: str,
+    current_user: User, case_repo: Cases, ent_repo: Entities, graph_service: Graph,
+) -> CaseInsightsResponse:
+    """Return case-scoped patterns and centrality-ranked people for investigative review."""
+    await require_case_access(case_id, current_user, case_repo)
+
+    try:
+        raw_patterns = await graph_service.get_case_patterns(case_id)
+        patterns = CasePatternsResponse.model_validate(raw_patterns) if raw_patterns is not None else None
+    except (ValidationError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="Invalid graph insights response.") from exc
+    if patterns is None:
+        raise HTTPException(status_code=503, detail="Case insights are temporarily unavailable.")
+    if patterns.case_id != case_id:
+        raise HTTPException(status_code=502, detail="Invalid graph insights response.")
+
+    entities, _ = await ent_repo.list_by_case(case_id, limit=500)
+    local_entity_ids = {entity.id for entity in entities}
+    visible_patterns = []
+    for pattern in patterns.patterns:
+        if case_id not in pattern.case_ids:
+            continue
+        accessible = True
+        for related_case_id in set(pattern.case_ids) - {case_id}:
+            try:
+                await require_case_access(related_case_id, current_user, case_repo)
+            except HTTPException as exc:
+                if exc.status_code in {403, 404}:
+                    accessible = False
+                    break
+                raise
+        if not accessible:
+            continue
+        visible_patterns.append(pattern.model_copy(update={
+            "supporting_entity_ids": [
+                entity_id for entity_id in pattern.supporting_entity_ids
+                if entity_id in local_entity_ids
+            ],
+            "explanation": _safe_pattern_explanation(pattern.pattern_type, len(pattern.case_ids)),
+            "disposition": "INVESTIGATIVE_LEAD_NOT_FACT",
+        }))
+
+    people = [entity for entity in entities if entity.entity_type.value == "PERSON"]
+    centrality_slots = asyncio.Semaphore(8)
+
+    async def get_centrality(entity_id: str):
+        async with centrality_slots:
+            return await graph_service.get_entity_centrality(entity_id)
+
+    results = await asyncio.gather(
+        *(get_centrality(entity.id) for entity in people),
+        return_exceptions=True,
+    )
+    influential_people = []
+    unavailable = 0
+    for entity, result in zip(people, results, strict=True):
+        if isinstance(result, BaseException) or result is None or result.entity_id != entity.id:
+            unavailable += 1
+            continue
+        safe_entity = masked_entity(entity)
+        influential_people.append(InfluentialPerson(
+            entity_id=entity.id,
+            name=safe_entity.name,
+            centrality=result.centrality,
+            explanation=(
+                "This person ranks highly by network position within the available graph. "
+                "Centrality indicates connectivity, not identity, involvement, or guilt."
+            ),
+            is_masked=safe_entity.is_masked,
+        ))
+    influential_people.sort(
+        key=lambda item: (
+            -item.centrality.betweenness,
+            -item.centrality.pagerank,
+            -item.centrality.degree,
+            item.entity_id,
+        )
+    )
+    warnings = []
+    if unavailable:
+        warnings.append(f"Centrality was unavailable for {unavailable} person record(s).")
+    return CaseInsightsResponse(
+        case_id=case_id,
+        patterns=visible_patterns,
+        influential_people=influential_people[:20],
+        status="degraded" if warnings else "complete",
+        warnings=warnings,
+    )
+
+
+def _safe_pattern_explanation(pattern_type: str, case_count: int) -> str:
+    label = pattern_type.replace("_", " ").lower()
+    return (
+        f"Graph analysis identified a {label} signal across {case_count} accessible case(s). "
+        "Review the underlying source records before treating this lead as a conclusion."
+    )
+
 
 @router.get("/cases/{case_id}/linkage", response_model=CaseLinkageResponse, summary="Get Cross-Case Linkage")
 async def get_case_linkage(
