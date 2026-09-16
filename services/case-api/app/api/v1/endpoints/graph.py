@@ -23,6 +23,7 @@ from app.schemas.graph import (
     GraphResponse,
     GraphStats,
     InfluentialPerson,
+    LinkCandidate,
     ShortestPathResponse,
 )
 from app.schemas.user import UserResponse
@@ -92,12 +93,26 @@ async def get_entity_neighbors(
 @router.get("/cases/{case_id}/graph/stats", response_model=GraphStats, summary="Get Case Network Statistics")
 async def get_graph_stats(
     case_id: str,
-    current_user: User, case_repo: Cases, graph_service: Graph,
+    current_user: User, case_repo: Cases, ent_repo: Entities, graph_service: Graph,
 ) -> GraphStats:
     """Retrieve network analytics metrics (density, degree breakdown, top hubs)."""
     await require_case_access(case_id, current_user, case_repo)
 
-    return await graph_service.get_graph_stats(case_id)
+    stats = await graph_service.get_graph_stats(case_id)
+    masked_hubs = []
+    for hub in stats.top_connected_entities:
+        item = dict(hub)
+        entity_id = item.get("id") or item.get("entity_id")
+        entity = await ent_repo.get_by_id(entity_id) if entity_id else None
+        if entity and is_victim_pii(entity):
+            safe_name = "[VICTIM DATA MASKED]"
+            if "name" in item:
+                item["name"] = safe_name
+            if "entity_name" in item:
+                item["entity_name"] = safe_name
+            item["is_masked"] = True
+        masked_hubs.append(item)
+    return stats.model_copy(update={"top_connected_entities": masked_hubs})
 
 
 @router.get("/cases/{case_id}/graph/shortest-path", response_model=ShortestPathResponse, summary="Find Shortest Network Path")
@@ -166,6 +181,47 @@ async def get_case_insights(
             "disposition": "INVESTIGATIVE_LEAD_NOT_FACT",
         }))
 
+    link_candidates: list[LinkCandidate] = []
+    link_predictions_unavailable = False
+    try:
+        raw_candidates = await graph_service.get_case_link_predictions(case_id)
+    except (ValidationError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="Invalid graph link-prediction response.") from exc
+    except (RuntimeError, TypeError):
+        # A missing optional analytics capability must not take down the graph view.
+        raw_candidates = None
+        link_predictions_unavailable = True
+    if raw_candidates is None or not isinstance(raw_candidates, list):
+        link_predictions_unavailable = True
+    else:
+        by_id = {entity.id: entity for entity in entities}
+        for raw_candidate in raw_candidates:
+            try:
+                candidate = LinkCandidate.model_validate(raw_candidate)
+            except ValidationError as exc:
+                raise HTTPException(status_code=502, detail="Invalid graph link-prediction response.") from exc
+            source = by_id.get(candidate.source_entity_id)
+            target = by_id.get(candidate.target_entity_id)
+            if not source or not target:
+                continue
+            source_safe = masked_entity(source)
+            target_safe = masked_entity(target)
+            link_candidates.append(candidate.model_copy(update={
+                "source_name": source_safe.name,
+                "target_name": target_safe.name,
+                "common_neighbor_ids": [
+                    entity_id for entity_id in candidate.common_neighbor_ids
+                    if entity_id in local_entity_ids
+                ],
+                "explanation": _safe_link_candidate_explanation(
+                    len(candidate.common_neighbor_ids),
+                ),
+                "disposition": "INVESTIGATIVE_LEAD_NOT_FACT",
+            }))
+    link_candidates.sort(
+        key=lambda item: (-item.confidence, item.source_entity_id, item.target_entity_id),
+    )
+
     people = [entity for entity in entities if entity.entity_type.value == "PERSON"]
     centrality_slots = asyncio.Semaphore(8)
 
@@ -205,10 +261,13 @@ async def get_case_insights(
     warnings = []
     if unavailable:
         warnings.append(f"Centrality was unavailable for {unavailable} person record(s).")
+    if link_predictions_unavailable:
+        warnings.append("Link-prediction analytics are temporarily unavailable.")
     return CaseInsightsResponse(
         case_id=case_id,
         patterns=visible_patterns,
         influential_people=influential_people[:20],
+        link_candidates=link_candidates[:20],
         status="degraded" if warnings else "complete",
         warnings=warnings,
     )
@@ -218,6 +277,14 @@ def _safe_pattern_explanation(pattern_type: str, case_count: int) -> str:
     label = pattern_type.replace("_", " ").lower()
     return (
         f"Graph analysis identified a {label} signal across {case_count} accessible case(s). "
+        "Review the underlying source records before treating this lead as a conclusion."
+    )
+
+
+def _safe_link_candidate_explanation(common_neighbor_count: int) -> str:
+    return (
+        "Graph analysis suggests a possible link supported by "
+        f"{common_neighbor_count} accessible common neighbour(s). "
         "Review the underlying source records before treating this lead as a conclusion."
     )
 
