@@ -27,6 +27,8 @@ from app.schemas.graph import (
     GraphNode,
     GraphResponse,
     GraphStats,
+    LinkCandidate,
+    LinkPredictionsResponse,
     ShortestPathResponse,
 )
 
@@ -75,6 +77,9 @@ class GraphServiceInterface(ABC):
 
     @abstractmethod
     async def get_entity_centrality(self, entity_id: str) -> CentralityResponse | None: ...
+
+    @abstractmethod
+    async def get_case_link_predictions(self, case_id: str) -> list[LinkCandidate] | None: ...
 
     @abstractmethod
     async def get_shortest_path(
@@ -375,6 +380,41 @@ class IntegratedGraphService(GraphServiceInterface):
         centrality = CentralityResponse.model_validate(payload)
         # Keep graph-service identifiers behind the authenticated Case API boundary.
         return centrality.model_copy(update={"entity_id": entity.id})
+
+    async def get_case_link_predictions(self, case_id: str) -> list[LinkCandidate] | None:
+        """Return only predictions whose endpoints are local to the requested case."""
+        payload = await self._request("GET", "/link-predictions", params={"limit": 100})
+        if payload is None:
+            return None
+        predictions = LinkPredictionsResponse.model_validate(payload)
+        entities, _ = await self._ent_repo.list_by_case(case_id, limit=500)
+        local_by_id = {entity.id: entity for entity in entities}
+        graph_to_local = {self._graph_entity_id(entity): entity.id for entity in entities}
+
+        def local_id(graph_id: str) -> str | None:
+            return graph_to_local.get(graph_id) or (graph_id if graph_id in local_by_id else None)
+
+        candidates = []
+        for prediction in predictions.predictions:
+            source_id = local_id(prediction.source_entity_id)
+            target_id = local_id(prediction.target_entity_id)
+            if not source_id or not target_id or source_id == target_id:
+                continue
+            common_ids = [
+                mapped_id
+                for entity_id in prediction.common_neighbor_ids
+                if (mapped_id := local_id(entity_id)) is not None
+            ]
+            source = local_by_id[source_id]
+            target = local_by_id[target_id]
+            candidates.append(prediction.model_copy(update={
+                "source_entity_id": source_id,
+                "target_entity_id": target_id,
+                "source_name": source.name,
+                "target_name": target.name,
+                "common_neighbor_ids": common_ids,
+            }))
+        return candidates
 
     async def get_shortest_path(
         self, source_entity_id: str, target_entity_id: str,
