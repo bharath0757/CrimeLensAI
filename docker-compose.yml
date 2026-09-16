@@ -148,6 +148,7 @@ services:
       context: ./frontend
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_ENABLE_DEMO_ACCOUNTS: ${VITE_ENABLE_DEMO_ACCOUNTS:-false}
     ports: ["${BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-5173}:8080"]
     depends_on:
       api: {condition: service_healthy}
