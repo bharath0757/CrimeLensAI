@@ -19,6 +19,8 @@ from app.repositories.relationship_repo import (
     RelationshipRepositoryInterface,
 )
 from app.schemas.graph import (
+    CasePatternsResponse,
+    CentralityResponse,
     EntityConnectionsResponse,
     EntityNeighborsResponse,
     GraphEdge,
@@ -67,6 +69,12 @@ class GraphServiceInterface(ABC):
 
     @abstractmethod
     async def get_case_linkage(self, case_id: str) -> dict[str, Any]: ...
+
+    @abstractmethod
+    async def get_case_patterns(self, case_id: str) -> CasePatternsResponse | None: ...
+
+    @abstractmethod
+    async def get_entity_centrality(self, entity_id: str) -> CentralityResponse | None: ...
 
     @abstractmethod
     async def get_shortest_path(
@@ -335,6 +343,38 @@ class IntegratedGraphService(GraphServiceInterface):
             ],
             "source": "case_api_fallback",
         }
+
+    async def get_case_patterns(self, case_id: str) -> CasePatternsResponse | None:
+        payload = await self._request("GET", f"/patterns/{case_id}")
+        if payload is None:
+            return None
+        patterns = CasePatternsResponse.model_validate(payload)
+        entities, _ = await self._ent_repo.list_by_case(case_id, limit=500)
+        local_ids = {entity.id for entity in entities}
+        graph_to_local = {self._graph_entity_id(entity): entity.id for entity in entities}
+        return patterns.model_copy(update={
+            "patterns": [
+                pattern.model_copy(update={
+                    "supporting_entity_ids": [
+                        graph_to_local.get(entity_id, entity_id)
+                        for entity_id in pattern.supporting_entity_ids
+                        if entity_id in graph_to_local or entity_id in local_ids
+                    ],
+                })
+                for pattern in patterns.patterns
+            ],
+        })
+
+    async def get_entity_centrality(self, entity_id: str) -> CentralityResponse | None:
+        entity = await self._ent_repo.get_by_id(entity_id)
+        if not entity:
+            return None
+        payload = await self._request("GET", f"/centrality/{self._graph_entity_id(entity)}")
+        if payload is None:
+            return None
+        centrality = CentralityResponse.model_validate(payload)
+        # Keep graph-service identifiers behind the authenticated Case API boundary.
+        return centrality.model_copy(update={"entity_id": entity.id})
 
     async def get_shortest_path(
         self, source_entity_id: str, target_entity_id: str,
