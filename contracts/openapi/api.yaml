@@ -87,6 +87,28 @@ paths:
         "200":
           description: Case archived
 
+  /api/v1/cases/{case_id}/insights:
+    get:
+      summary: Get case-scoped network insights
+      operationId: getCaseInsights
+      parameters:
+        - name: case_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Explainable investigative leads and centrality-ranked people
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseInsightsResponse"
+        "403":
+          description: The current user cannot access the case
+        "503":
+          description: Optional graph analytics are unavailable
+
   /api/v1/search:
     get:
       summary: Search cases and entities
@@ -177,6 +199,98 @@ components:
         filing_date:
           type: string
           format: date-time
+
+    CentralityMetrics:
+      type: object
+      required: [degree, betweenness, pagerank]
+      properties:
+        degree:
+          type: number
+          minimum: 0
+        betweenness:
+          type: number
+          minimum: 0
+        pagerank:
+          type: number
+          minimum: 0
+
+    CaseInsightPattern:
+      type: object
+      required: [pattern_type, case_ids, confidence, supporting_entity_ids, explanation, disposition]
+      properties:
+        pattern_type:
+          type: string
+        case_ids:
+          type: array
+          items: {type: string}
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        supporting_entity_ids:
+          type: array
+          items: {type: string}
+        explanation:
+          type: string
+        disposition:
+          type: string
+          enum: [INVESTIGATIVE_LEAD_NOT_FACT]
+
+    InfluentialPerson:
+      type: object
+      required: [entity_id, name, entity_type, centrality, explanation, is_masked]
+      properties:
+        entity_id: {type: string}
+        name: {type: string}
+        entity_type: {type: string}
+        centrality:
+          $ref: "#/components/schemas/CentralityMetrics"
+        explanation: {type: string}
+        is_masked: {type: boolean}
+
+    LinkCandidate:
+      type: object
+      required: [source_entity_id, target_entity_id, confidence, common_neighbor_ids, explanation, disposition]
+      properties:
+        source_entity_id: {type: string}
+        target_entity_id: {type: string}
+        source_name: {type: [string, "null"]}
+        target_name: {type: [string, "null"]}
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        common_neighbor_ids:
+          type: array
+          items: {type: string}
+        explanation: {type: string}
+        method: {type: [string, "null"]}
+        disposition:
+          type: string
+          enum: [INVESTIGATIVE_LEAD_NOT_FACT]
+
+    CaseInsightsResponse:
+      type: object
+      required: [case_id, influential_people, patterns, link_candidates, status, warnings, disclaimer]
+      properties:
+        case_id: {type: string}
+        influential_people:
+          type: array
+          items:
+            $ref: "#/components/schemas/InfluentialPerson"
+        patterns:
+          type: array
+          items:
+            $ref: "#/components/schemas/CaseInsightPattern"
+        link_candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/LinkCandidate"
+        status: {type: string}
+        warnings:
+          type: array
+          items: {type: string}
+        disclaimer: {type: string}
 
     DashboardStats:
       type: object
