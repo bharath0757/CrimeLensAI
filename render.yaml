@@ -130,9 +130,9 @@ services:
       - key: ALLOWED_ORIGINS
         value: '["http://localhost:5173","http://localhost:3000","https://crime-lens-ai-two.vercel.app"]'
       - key: SEED_SYNTHETIC
-        value: "true"
+        value: "false"
       - key: ALLOW_DEMO_SEED
-        value: "true"
+        value: "false"
       - key: UPLOAD_DIR
         value: /data/uploads
       - key: AI_SERVICE_URL
