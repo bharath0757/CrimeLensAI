@@ -42,7 +42,15 @@ interface GraphStatsData {
   density: number;
   node_types_breakdown: Record<string, number>;
   relationship_types_breakdown: Record<string, number>;
-  top_connected_entities: Array<{ entity_id: string; entity_name: string; degree: number; entity_type?: string }>;
+  top_connected_entities: Array<{
+    id?: string;
+    entity_id?: string;
+    name?: string;
+    entity_name?: string;
+    degree: number;
+    type?: string;
+    entity_type?: string;
+  }>;
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -518,8 +526,8 @@ export function NetworkAnalysis() {
             {graphStats?.top_connected_entities?.[0] && (
               <div className="border-l border-surface-200 dark:border-surface-700 pl-3 max-w-[140px] truncate">
                 <span className="text-surface-500 block text-[10px] uppercase font-semibold">Top Hub</span>
-                <span className="font-bold text-primary-600 dark:text-primary-400 truncate block" title={graphStats.top_connected_entities[0].entity_name}>
-                  {graphStats.top_connected_entities[0].entity_name}
+                <span className="font-bold text-primary-600 dark:text-primary-400 truncate block" title={graphStats.top_connected_entities[0].name || graphStats.top_connected_entities[0].entity_name || "Top connected entity"}>
+                  {graphStats.top_connected_entities[0].name || graphStats.top_connected_entities[0].entity_name || graphStats.top_connected_entities[0].entity_id || "Top connected entity"}
                 </span>
               </div>
             )}
