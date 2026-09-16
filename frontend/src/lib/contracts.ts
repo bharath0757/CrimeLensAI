@@ -49,6 +49,53 @@ export interface CaseLinkageResponse {
   source: string;
 }
 
+export interface CentralityMetrics {
+  degree: number;
+  betweenness: number;
+  pagerank: number;
+}
+
+export interface InfluentialPerson {
+  entity_id: string;
+  name: string;
+  entity_type: "PERSON" | string;
+  centrality: CentralityMetrics;
+  explanation: string;
+  is_masked?: boolean;
+}
+
+export interface CaseInsightPattern {
+  pattern_type: string;
+  case_ids: string[];
+  confidence: number;
+  supporting_entity_ids: string[];
+  explanation: string;
+  disposition: "INVESTIGATIVE_LEAD_NOT_FACT" | string;
+}
+
+export interface LinkCandidate {
+  source_entity_id: string;
+  target_entity_id: string;
+  source_name?: string;
+  target_name?: string;
+  confidence: number;
+  common_neighbor_ids: string[];
+  explanation: string;
+  method?: string;
+  disposition: "INVESTIGATIVE_LEAD_NOT_FACT" | string;
+}
+
+export interface CaseInsightsResponse {
+  case_id: string;
+  influential_people: InfluentialPerson[];
+  patterns: CaseInsightPattern[];
+  /** Optional while older graph services expose candidates only as pattern cards. */
+  link_candidates?: LinkCandidate[];
+  status: "complete" | "partial" | "unavailable" | string;
+  warnings: string[];
+  disclaimer: string;
+}
+
 export interface ExtractionMention {
   entity_id: string;
   entity_type: string;
