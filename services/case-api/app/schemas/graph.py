@@ -93,3 +93,67 @@ class CaseLinkageResponse(BaseModel):
     case_id: str
     linked_cases: list[LinkedCase]
     source: str = "graph"
+
+
+class CentralityMetrics(BaseModel):
+    degree: float = Field(ge=0.0)
+    betweenness: float = Field(ge=0.0)
+    pagerank: float = Field(ge=0.0)
+
+
+class CentralityResponse(BaseModel):
+    entity_id: str
+    centrality: CentralityMetrics
+    explanation: str
+
+
+class CasePattern(BaseModel):
+    pattern_type: str
+    case_ids: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+    supporting_entity_ids: list[str] = Field(default_factory=list)
+    explanation: str
+    disposition: str = "INVESTIGATIVE_LEAD_NOT_FACT"
+
+
+class CasePatternsResponse(BaseModel):
+    case_id: str
+    patterns: list[CasePattern] = Field(default_factory=list)
+
+
+class LinkCandidate(BaseModel):
+    source_entity_id: str
+    target_entity_id: str
+    source_name: str | None = None
+    target_name: str | None = None
+    confidence: float = Field(ge=0.0, le=1.0)
+    common_neighbor_ids: list[str] = Field(default_factory=list)
+    explanation: str
+    method: str | None = None
+    disposition: str = "INVESTIGATIVE_LEAD_NOT_FACT"
+
+
+class LinkPredictionsResponse(BaseModel):
+    predictions: list[LinkCandidate] = Field(default_factory=list)
+
+
+class InfluentialPerson(BaseModel):
+    entity_id: str
+    name: str
+    entity_type: str = "PERSON"
+    centrality: CentralityMetrics
+    explanation: str
+    is_masked: bool = False
+
+
+class CaseInsightsResponse(BaseModel):
+    case_id: str
+    patterns: list[CasePattern] = Field(default_factory=list)
+    influential_people: list[InfluentialPerson] = Field(default_factory=list)
+    link_candidates: list[LinkCandidate] = Field(default_factory=list)
+    status: str = "complete"
+    warnings: list[str] = Field(default_factory=list)
+    disclaimer: str = (
+        "Network analytics are investigative leads, not findings of identity, involvement, or guilt. "
+        "Review the underlying source evidence before taking action."
+    )
