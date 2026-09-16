@@ -10,7 +10,7 @@ import { api } from "../lib/api";
 import ForceGraph2D from "react-force-graph-2d";
 import { useTheme } from "../contexts/ThemeContext";
 import { InterfaceIcon } from "../components/InterfaceIcon";
-import type { CaseRecord } from "../lib/contracts";
+import type { CaseInsightsResponse, CaseRecord, LinkCandidate } from "../lib/contracts";
 
 interface GraphNode {
   id: string;
@@ -22,6 +22,7 @@ interface GraphNode {
   status?: string;
   properties?: Record<string, any>;
   linkedCaseNames?: string[];
+  centrality?: { degree: number; betweenness: number; pagerank: number };
   x?: number;
   y?: number;
 }
@@ -77,6 +78,8 @@ export function NetworkAnalysis() {
   const [graphStatus, setGraphStatus] = useState<"loading" | "success" | "error" | "empty">("loading");
   const [graphData, setGraphData] = useState<{ nodes: GraphNode[]; links: GraphLink[] }>({ nodes: [], links: [] });
   const [graphStats, setGraphStats] = useState<GraphStatsData | null>(null);
+  const [insights, setInsights] = useState<CaseInsightsResponse | null>(null);
+  const [insightsStatus, setInsightsStatus] = useState<"loading" | "success" | "unavailable">("loading");
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
   const [actionProcessing, setActionProcessing] = useState(false);
@@ -120,14 +123,17 @@ export function NetworkAnalysis() {
     if (!caseId) return;
 
     setGraphStatus("loading");
+    setInsightsStatus("loading");
     setSelectedNode(null);
     setActionFeedback(null);
 
     try {
-      // Parallel fetch of topology and cross-case linkage
-      const [graphRes, linkageRes] = await Promise.allSettled([
+      // Analytics is additive: the graph remains usable when an older deployment
+      // does not expose the case insights endpoint yet.
+      const [graphRes, linkageRes, insightsRes] = await Promise.allSettled([
         api.graph.getCaseGraph(caseId),
         api.graph.getCaseLinkage(caseId),
+        api.graph.getCaseInsights(caseId),
       ]);
 
       if (graphRes.status === "rejected") {
@@ -136,6 +142,13 @@ export function NetworkAnalysis() {
 
       const rawGraph: any = graphRes.value;
       const linkage: any = linkageRes.status === "fulfilled" ? linkageRes.value : null;
+      const caseInsights = insightsRes.status === "fulfilled" ? insightsRes.value : null;
+      setInsights(caseInsights);
+      setInsightsStatus(caseInsights ? "success" : "unavailable");
+
+      const centralityByEntityId = new Map(
+        (caseInsights?.influential_people || []).map(person => [person.entity_id, person.centrality] as const),
+      );
 
       // Build cross-case map
       const entityLinkedCasesMap: Record<string, string[]> = {};
@@ -168,16 +181,25 @@ export function NetworkAnalysis() {
       const nodes: GraphNode[] = rawNodes.map((n: any) => {
         const valStr = String(n.label || "").trim().toLowerCase();
         const linkedCases = entityLinkedCasesMap[valStr] || [];
+        const centrality = centralityByEntityId.get(n.id);
+        const centralityScore = centrality
+          ? Math.max(centrality.degree, centrality.betweenness, centrality.pagerank)
+          : null;
         return {
           id: n.id,
           name: n.label,
           type: n.type,
-          val: n.type === "CASE" ? 8 : (linkedCases.length > 0 ? 6 : 4),
+          val: n.type === "CASE"
+            ? 8
+            : centralityScore !== null
+              ? 5 + Math.min(1, Math.max(0, centralityScore)) * 9
+              : (linkedCases.length > 0 ? 6 : 4),
           color: TYPE_COLORS[n.type] || TYPE_COLORS["OTHER"] || "#94a3b8",
           confidence: n.confidence_score,
           status: n.properties?.status || n.properties?.review_status || "PENDING",
           properties: n.properties || {},
           linkedCaseNames: linkedCases,
+          centrality,
         };
       });
 
@@ -231,6 +253,8 @@ export function NetworkAnalysis() {
       }, 500);
     } catch (error) {
       console.error("Failed to fetch graph data:", error);
+      setInsights(null);
+      setInsightsStatus("unavailable");
       setGraphStatus("error");
     }
   }, [selectedCaseId, cases]);
@@ -338,6 +362,27 @@ export function NetworkAnalysis() {
     });
     return neighbors;
   }, [selectedNode, graphData]);
+
+  const insightCards = useMemo(() => {
+    if (!insights) return [];
+    const patterns = insights.patterns.map(pattern => ({
+      key: `pattern-${pattern.pattern_type}-${pattern.case_ids.join("-")}-${pattern.supporting_entity_ids.join("-")}`,
+      title: formatEntityType(pattern.pattern_type),
+      explanation: pattern.explanation,
+      confidence: pattern.confidence,
+      disposition: pattern.disposition,
+      kind: "Suspicious pattern",
+    }));
+    const candidates = (insights.link_candidates || []).map((candidate: LinkCandidate) => ({
+      key: `candidate-${candidate.source_entity_id}-${candidate.target_entity_id}`,
+      title: `${candidate.source_name || candidate.source_entity_id} ? ${candidate.target_name || candidate.target_entity_id}`,
+      explanation: candidate.explanation,
+      confidence: candidate.confidence,
+      disposition: candidate.disposition,
+      kind: "Link candidate",
+    }));
+    return [...patterns, ...candidates];
+  }, [insights]);
 
   // Zoom helpers
   const handleZoomIn = () => {
@@ -637,6 +682,109 @@ export function NetworkAnalysis() {
 
         {/* Entity Profile Sidebar */}
         <aside className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl p-5 shadow-sm flex flex-col h-full overflow-y-auto transition-colors min-h-0">
+          <section aria-labelledby="investigator-insights-heading" className="shrink-0 mb-5 pb-5 border-b border-surface-200 dark:border-surface-800 space-y-3">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <h2 id="investigator-insights-heading" className="text-base font-bold text-surface-900 dark:text-white">
+                  Investigator Insights
+                </h2>
+                <span className="text-[9px] font-bold uppercase tracking-wide rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 px-2 py-0.5">
+                  Leads, not facts
+                </span>
+              </div>
+              <p className="text-[11px] leading-normal text-surface-500 dark:text-surface-400 mt-1">
+                Network importance and pattern scores prioritize review; they do not establish identity, involvement, or guilt.
+              </p>
+            </div>
+
+            {insightsStatus === "loading" && (
+              <div role="status" className="rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50 p-3 text-xs text-surface-500">
+                Loading case analytics?
+              </div>
+            )}
+
+            {insightsStatus === "unavailable" && (
+              <div className="rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50 p-3">
+                <p className="text-xs font-semibold text-surface-700 dark:text-surface-200">Advanced analytics unavailable</p>
+                <p className="text-[11px] leading-normal text-surface-500 dark:text-surface-400 mt-1">
+                  The network graph remains available. Retry after the analytics service is connected.
+                </p>
+              </div>
+            )}
+
+            {insightsStatus === "success" && insights && (
+              <>
+                {(insights.status !== "complete" || insights.warnings.length > 0) && (
+                  <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-2.5 text-[11px] text-amber-900 dark:text-amber-200">
+                    Some analytics are incomplete. {insights.warnings.join(" ")}
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-surface-500">
+                    Influential people ({insights.influential_people.length})
+                  </h3>
+                  {insights.influential_people.length === 0 ? (
+                    <p className="text-[11px] italic text-surface-500">No influential PERSON entities were identified for this case.</p>
+                  ) : (
+                    insights.influential_people.map((person, index) => {
+                      const matchingNode = graphData.nodes.find(node => node.id === person.entity_id);
+                      return (
+                        <button
+                          key={person.entity_id}
+                          type="button"
+                          disabled={!matchingNode}
+                          onClick={() => matchingNode && setSelectedNode(matchingNode)}
+                          className="w-full text-left rounded-lg border border-primary-200 dark:border-primary-900 bg-primary-50/60 dark:bg-primary-950/20 p-2.5 disabled:cursor-default transition-colors enabled:hover:border-primary-400"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <span className="text-[9px] font-bold uppercase tracking-wider text-primary-600 dark:text-primary-400">#{index + 1} network influence</span>
+                              <p className="text-xs font-semibold text-surface-900 dark:text-white truncate">{person.name}</p>
+                            </div>
+                            <span className="text-[10px] font-semibold text-primary-700 dark:text-primary-300">
+                              PR {(person.centrality.pagerank * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                          <p className="text-[10px] leading-normal text-surface-600 dark:text-surface-300 mt-1">{person.explanation}</p>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-surface-500">
+                    Patterns & link candidates ({insightCards.length})
+                  </h3>
+                  {insightCards.length === 0 ? (
+                    <p className="text-[11px] italic text-surface-500">No suspicious patterns or link candidates currently meet review thresholds.</p>
+                  ) : (
+                    insightCards.map(card => (
+                      <article key={card.key} className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/20 p-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">{card.kind}</span>
+                            <h4 className="text-xs font-semibold text-surface-900 dark:text-white">{card.title}</h4>
+                          </div>
+                          <span className="text-[10px] font-semibold text-amber-800 dark:text-amber-300">{Math.round(card.confidence * 100)} score</span>
+                        </div>
+                        <p className="text-[10px] leading-normal text-surface-700 dark:text-surface-300 mt-1.5">{card.explanation}</p>
+                        <p className="text-[9px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-300 mt-2">
+                          {card.disposition.replace(/_/g, " ")}
+                        </p>
+                      </article>
+                    ))
+                  )}
+                </div>
+
+                <p className="text-[10px] leading-normal text-surface-500 dark:text-surface-400">
+                  {insights.disclaimer} Matching graph nodes are sized by their strongest available centrality measure.
+                </p>
+              </>
+            )}
+          </section>
+
           <div className="flex items-center justify-between mb-3 shrink-0">
             <h2 className="text-base font-bold text-surface-900 dark:text-white">
               Entity Dossier
@@ -710,6 +858,22 @@ export function NetworkAnalysis() {
                         style={{ width: `${Math.round(selectedNode.confidence * 100)}%` }} 
                       />
                     </div>
+                  </div>
+                )}
+
+
+                {selectedNode.centrality && (
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-surface-200 dark:border-surface-700">
+                    {([
+                      ["Degree", selectedNode.centrality.degree],
+                      ["Bridge", selectedNode.centrality.betweenness],
+                      ["PageRank", selectedNode.centrality.pagerank],
+                    ] as const).map(([label, value]) => (
+                      <div key={label}>
+                        <span className="block text-[9px] uppercase font-semibold text-surface-500">{label}</span>
+                        <span className="text-[11px] font-bold text-primary-700 dark:text-primary-300">{value.toFixed(3)}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
