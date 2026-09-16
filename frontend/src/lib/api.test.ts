@@ -55,3 +55,25 @@ test("preview passes text and cancellation to the real gateway path", async () =
   expect(JSON.parse(options.body)).toEqual({ text: "Phone: 9123456789" });
   expect(options.signal).toBe(controller.signal);
 });
+
+
+test("case insights use the authenticated case-scoped analytics endpoint", async () => {
+  localStorage.setItem("crimelens_auth_token", "test-token");
+  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    case_id: "case-1",
+    influential_people: [],
+    patterns: [],
+    status: "complete",
+    warnings: [],
+    disclaimer: "Investigative leads only.",
+  })));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await api.graph.getCaseInsights("case-1");
+
+  expect(fetchMock).toHaveBeenCalledWith("/api/v1/cases/case-1/insights", expect.objectContaining({
+    headers: expect.objectContaining({}),
+  }));
+  const [, options] = fetchMock.mock.calls[0];
+  expect(options.headers.get("Authorization")).toBe("Bearer test-token");
+});
