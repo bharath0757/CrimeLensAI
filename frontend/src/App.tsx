@@ -47,6 +47,7 @@ function App() {
                   <Route path="/audit" element={<AuditTrail />} />
                 </Route>
               </Route>
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </Suspense>
         </BrowserRouter>
