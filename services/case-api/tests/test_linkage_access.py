@@ -135,6 +135,39 @@ def test_graph_nodes_mask_victim_identifiers(client, admin_auth_headers):
         app.dependency_overrides.pop(get_graph_service, None)
 
 
+def test_graph_stats_mask_victim_top_hub(client, admin_auth_headers):
+    from app.main import app
+    from app.schemas.graph import GraphStats
+
+    case_id = create_case(client, admin_auth_headers, "Victim stats privacy")
+    victim = client.post(
+        f"/api/v1/cases/{case_id}/entities",
+        headers=admin_auth_headers,
+        json={
+            "name": "Protected Stats Complainant",
+            "entity_type": "PERSON",
+            "properties": {"privacy_classification": "VICTIM_PII"},
+        },
+    ).json()
+    graph = AsyncMock()
+    graph.get_graph_stats.return_value = GraphStats(
+        total_nodes=1,
+        top_connected_entities=[{
+            "id": victim["id"], "name": "Protected Stats Complainant", "type": "PERSON", "degree": 1,
+        }],
+    )
+    app.dependency_overrides[get_graph_service] = lambda: graph
+    try:
+        response = client.get(f"/api/v1/cases/{case_id}/graph/stats", headers=admin_auth_headers)
+        assert response.status_code == 200
+        assert "Protected Stats Complainant" not in response.text
+        hub = response.json()["top_connected_entities"][0]
+        assert hub["name"] == "[VICTIM DATA MASKED]"
+        assert hub["is_masked"] is True
+    finally:
+        app.dependency_overrides.pop(get_graph_service, None)
+
+
 @pytest.mark.parametrize("operation", ["graph", "stats", "connections", "neighbors", "path"])
 def test_graph_views_require_case_assignment(client, admin_auth_headers, investigator_auth_headers, operation):
     hidden = create_case(client, admin_auth_headers, "Restricted graph")
