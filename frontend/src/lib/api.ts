@@ -18,7 +18,7 @@ import { platform } from "../adapters/platform";
 import type { AuthToken, CaseInput, CaseRecord, EvidenceDocument, ExtractionPreview, ProcessResult, UserProfile } from "./contracts";
 import { SESSION_EXPIRED_EVENT } from "./auth-events";
 import type { DashboardOverview, DashboardMetrics, ConnectionAlert, ConnectionAlertPage } from "./contracts";
-import type { CaseLinkageResponse } from "./contracts";
+import type { CaseInsightsResponse, CaseLinkageResponse } from "./contracts";
 import type { IngestionReceipt } from "./contracts";
 
 const PRODUCTION_API_ORIGIN = "https://crimelensai-lmsi.onrender.com";
@@ -335,6 +335,7 @@ export const api = {
   graph: {
     getCaseGraph: (caseId: string) => request(`/api/v1/cases/${caseId}/graph`),
     getCaseLinkage: (caseId: string) => request<CaseLinkageResponse>(`/api/v1/cases/${caseId}/linkage`),
+    getCaseInsights: (caseId: string) => request<CaseInsightsResponse>(`/api/v1/cases/${caseId}/insights`),
   },
 
   // Entities
